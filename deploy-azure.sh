@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# Stratiq — Azure App Service Deployment Script
+# Stratiq -- Azure App Service Deployment Script
 # ============================================================
 # Prerequisites:
 #   - Azure CLI installed: https://learn.microsoft.com/en-us/cli/azure/install-azure-cli
@@ -11,38 +11,37 @@
 #   chmod +x deploy-azure.sh
 #   ./deploy-azure.sh
 #
-# To override defaults, set env vars before running:
+# Overrides (set env vars before running):
 #   APP_NAME=my-stratiq REGION=canadacentral ./deploy-azure.sh
+#   NODE_VERSION=NODE:20-lts ./deploy-azure.sh
 # ============================================================
 
 set -euo pipefail
 
-# ── Colours ───────────────────────────────────────────────────
+# -- Colours --------------------------------------------------
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
-info()    { echo -e "${CYAN}ℹ  $*${RESET}"; }
-success() { echo -e "${GREEN}✓  $*${RESET}"; }
-warn()    { echo -e "${YELLOW}⚠  $*${RESET}"; }
-error()   { echo -e "${RED}✗  $*${RESET}"; exit 1; }
-header()  { echo -e "\n${BOLD}${CYAN}── $* ──────────────────────────────${RESET}"; }
+info()    { echo -e "${CYAN}  i  $*${RESET}"; }
+success() { echo -e "${GREEN}  v  $*${RESET}"; }
+warn()    { echo -e "${YELLOW}  !  $*${RESET}"; }
+error()   { echo -e "${RED}  x  $*${RESET}"; exit 1; }
+header()  { echo -e "\n${BOLD}${CYAN}-- $* ${RESET}"; echo ""; }
 
-# ── Configuration (override via env vars) ─────────────────────
-APP_NAME="${APP_NAME:-stratiq-$(openssl rand -hex 3)}"   # must be globally unique
+# -- Configuration (override via env vars) --------------------
+APP_NAME="${APP_NAME:-stratiq-$(openssl rand -hex 3)}"  # must be globally unique
 RESOURCE_GROUP="${RESOURCE_GROUP:-stratiq-rg}"
-REGION="${REGION:-canadacentral}"                         # az account list-locations -o table
+REGION="${REGION:-canadacentral}"                        # az account list-locations -o table
 APP_SERVICE_PLAN="${APP_SERVICE_PLAN:-stratiq-plan}"
-SKU="${SKU:-B1}"                                          # F1=free(limited), B1=basic $13/mo, B2, S1, P1v3
-NODE_VERSION="${NODE_VERSION:-18-lts}"
+SKU="${SKU:-B1}"                                         # F1=free(limited), B1=$13/mo, B2, S1, P1v3
+NODE_VERSION="${NODE_VERSION:-}"                         # auto-detected; or set e.g. NODE:20-lts
 SESSION_SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
+DB_PATH="${DB_PATH:-/home/data/stratiq.db}"              # persistent /home volume in App Service
 
-# ── SQLite persistence path (inside App Service container) ────
-DB_PATH="${DB_PATH:-/home/data/stratiq.db}"
-
-# ── Banner ─────────────────────────────────────────────────────
+# -- Banner ---------------------------------------------------
 echo ""
 echo -e "${BOLD}${CYAN}"
-cat << 'EOF'
+cat << 'BANNER'
    _____ _             _   _
   / ____| |           | | (_)
  | (___ | |_ _ __ __ _| |_ _  __ _
@@ -51,41 +50,40 @@ cat << 'EOF'
  |_____/ \__|_|  \__,_|\__|_|\__, |
                                __/ |
                               |___/
-EOF
+BANNER
 echo -e "${RESET}"
 echo -e "${BOLD}  Azure App Service Deployment${RESET}"
 echo -e "  AI Investment Strategy Simulator"
 echo ""
 
-# ── Preflight checks ───────────────────────────────────────────
+# -- Preflight checks -----------------------------------------
 header "Preflight"
 
 if ! command -v az &>/dev/null; then
-  error "Azure CLI not found. Install from: https://learn.microsoft.com/en-us/cli/azure/install-azure-cli"
+  error "Azure CLI not found. Install: https://learn.microsoft.com/en-us/cli/azure/install-azure-cli"
 fi
-success "Azure CLI found: $(az version --query '"azure-cli"' -o tsv)"
+success "Azure CLI: $(az version --query '"azure-cli"' -o tsv)"
 
 if ! command -v zip &>/dev/null; then
-  error "'zip' not found. Install with: brew install zip  OR  apt install zip"
+  error "'zip' not found. Install: brew install zip  OR  apt install zip"
 fi
-success "zip found"
+success "zip: OK"
 
 if ! command -v node &>/dev/null; then
-  warn "node not found locally — skipping local version check (not required for deployment)"
+  warn "node not found locally (not required for deployment)"
 else
   success "Node.js: $(node --version)"
 fi
 
-# Require app.js to be present
 if [ ! -f "app.js" ]; then
   error "app.js not found. Run this script from the Stratiq project root."
 fi
-success "app.js found — project root confirmed"
+success "app.js found -- project root confirmed"
 
-# ── Azure Login check ─────────────────────────────────────────
+# -- Azure Login ----------------------------------------------
 ACCOUNT=$(az account show --query "{name:name, id:id, user:user.name}" -o json 2>/dev/null || true)
 if [ -z "$ACCOUNT" ]; then
-  warn "Not logged in to Azure. Running 'az login'…"
+  warn "Not logged in to Azure. Running 'az login'..."
   az login
   ACCOUNT=$(az account show --query "{name:name, id:id, user:user.name}" -o json)
 fi
@@ -97,23 +95,66 @@ USER_NAME=$(echo "$ACCOUNT"         | python3 -c "import sys,json; d=json.load(s
 success "Logged in as  : ${USER_NAME}"
 success "Subscription  : ${SUBSCRIPTION_NAME} (${SUBSCRIPTION_ID})"
 
-# ── Confirm plan ───────────────────────────────────────────────
+# -- Auto-detect valid Node.js runtime ------------------------
+header "Detecting Node.js Runtime"
+
+info "Querying available Linux runtimes from your Azure subscription..."
+
+RUNTIME_LIST=$(az webapp list-runtimes --os-type linux --output tsv 2>/dev/null || true)
+
+if [ -z "$RUNTIME_LIST" ]; then
+  warn "Could not fetch runtime list -- falling back to NODE:20-lts"
+  DETECTED_RUNTIME="NODE:20-lts"
+else
+  # Print what is available for reference
+  NODE_RUNTIMES=$(echo "$RUNTIME_LIST" | grep -i "^NODE" || true)
+  info "Available Node runtimes in your subscription:"
+  echo "$NODE_RUNTIMES" | while read -r RT; do echo "      $RT"; done
+  echo ""
+
+  # Prefer Node 20 LTS, then 18 LTS, then newest available
+  DETECTED_RUNTIME=$(echo "$NODE_RUNTIMES" | grep -iE "NODE:[[:space:]]*20" | sort -rV | head -1 || true)
+  if [ -z "$DETECTED_RUNTIME" ]; then
+    DETECTED_RUNTIME=$(echo "$NODE_RUNTIMES" | grep -iE "NODE:[[:space:]]*18" | sort -rV | head -1 || true)
+  fi
+  if [ -z "$DETECTED_RUNTIME" ]; then
+    DETECTED_RUNTIME=$(echo "$NODE_RUNTIMES" | sort -rV | head -1 || true)
+  fi
+  if [ -z "$DETECTED_RUNTIME" ]; then
+    DETECTED_RUNTIME="NODE:20-lts"
+    warn "No NODE runtime matched -- using fallback: ${DETECTED_RUNTIME}"
+  fi
+fi
+
+# Manual override wins
+if [ -n "$NODE_VERSION" ]; then
+  RUNTIME="$NODE_VERSION"
+  info "Using manually specified runtime: ${RUNTIME}"
+else
+  RUNTIME="$DETECTED_RUNTIME"
+  success "Selected runtime: ${RUNTIME}"
+fi
+
+# Extract numeric major version for WEBSITE_NODE_DEFAULT_VERSION (e.g. NODE:20-lts -> ~20)
+NODE_MAJOR=$(echo "$RUNTIME" | grep -oE '[0-9]+' | head -1 || echo "20")
+
+# -- Confirm plan ---------------------------------------------
 header "Deployment Plan"
 echo -e "  App Name          : ${BOLD}${APP_NAME}${RESET}"
 echo -e "  Resource Group    : ${BOLD}${RESOURCE_GROUP}${RESET}"
 echo -e "  Region            : ${BOLD}${REGION}${RESET}"
 echo -e "  App Service Plan  : ${BOLD}${APP_SERVICE_PLAN}${RESET} (SKU: ${SKU})"
-echo -e "  Node Version      : ${BOLD}${NODE_VERSION}${RESET}"
+echo -e "  Runtime           : ${BOLD}${RUNTIME}${RESET}"
 echo -e "  DB Path (remote)  : ${BOLD}${DB_PATH}${RESET}"
 echo -e "  Subscription      : ${BOLD}${SUBSCRIPTION_NAME}${RESET}"
 echo ""
-echo -e "  ${YELLOW}Note: SQLite is stored at ${DB_PATH} inside the container.${RESET}"
-echo -e "  ${YELLOW}For production scale, migrate to Azure SQL or PostgreSQL.${RESET}"
+echo -e "  ${YELLOW}Note: SQLite is stored at ${DB_PATH} (Azure /home persistent volume).${RESET}"
+echo -e "  ${YELLOW}For production scale, migrate to Azure Database for PostgreSQL.${RESET}"
 echo ""
 read -r -p "  Proceed? [y/N] " CONFIRM
 [[ "$CONFIRM" =~ ^[Yy]$ ]] || { warn "Aborted."; exit 0; }
 
-# ── Check .env for required keys ───────────────────────────────
+# -- .env validation ------------------------------------------
 header "Environment Validation"
 
 MISSING_KEYS=()
@@ -122,31 +163,31 @@ REQUIRED_KEYS=("ANTHROPIC_API_KEY" "SMTP_HOST" "SMTP_USER" "SMTP_PASS")
 if [ -f ".env" ]; then
   for KEY in "${REQUIRED_KEYS[@]}"; do
     VALUE=$(grep -E "^${KEY}=" .env | cut -d'=' -f2- | tr -d '"' | tr -d "'" | xargs 2>/dev/null || true)
-    if [ -z "$VALUE" ] || [[ "$VALUE" == *"replace"* ]] || [[ "$VALUE" == *"your_"* ]]; then
+    if [ -z "$VALUE" ] || [[ "$VALUE" == *"replace"* ]] || [[ "$VALUE" == *"your_"* ]] || [[ "$VALUE" == *"xxxxxxx"* ]]; then
       MISSING_KEYS+=("$KEY")
     fi
   done
 else
-  warn ".env file not found — app settings will need to be set manually in Azure Portal."
+  warn ".env not found -- app settings will need to be configured manually in Azure Portal."
 fi
 
 if [ ${#MISSING_KEYS[@]} -gt 0 ]; then
-  warn "The following keys look unconfigured in .env:"
+  warn "These keys look unconfigured in .env:"
   for K in "${MISSING_KEYS[@]}"; do echo -e "    ${YELLOW}  - ${K}${RESET}"; done
   echo ""
-  echo -e "  ${YELLOW}AI features and email reports won't work without these.${RESET}"
+  warn "AI features and email reports will not work without these."
   read -r -p "  Continue anyway? [y/N] " SKIP_CONFIRM
   [[ "$SKIP_CONFIRM" =~ ^[Yy]$ ]] || { warn "Aborted. Fill in .env and retry."; exit 0; }
 else
   success "Required keys present in .env"
 fi
 
-# ── Build deployment package ───────────────────────────────────
+# -- Build deployment package ---------------------------------
 header "Building Deployment Package"
 
 DEPLOY_ZIP="stratiq-deploy.zip"
 
-info "Zipping project (excluding node_modules, .git, .env, db files)…"
+info "Zipping project (excluding node_modules, .git, .env, db files)..."
 zip -r "$DEPLOY_ZIP" . \
   --exclude "*.git*" \
   --exclude "node_modules/*" \
@@ -165,13 +206,13 @@ zip -r "$DEPLOY_ZIP" . \
 
 success "Package created: ${DEPLOY_ZIP} ($(du -sh "$DEPLOY_ZIP" | cut -f1))"
 
-# ── Resource Group ─────────────────────────────────────────────
+# -- Resource Group -------------------------------------------
 header "Resource Group"
 
 if az group show --name "$RESOURCE_GROUP" &>/dev/null; then
-  warn "Resource group '${RESOURCE_GROUP}' already exists — reusing."
+  warn "Resource group '${RESOURCE_GROUP}' already exists -- reusing."
 else
-  info "Creating resource group '${RESOURCE_GROUP}' in ${REGION}…"
+  info "Creating resource group '${RESOURCE_GROUP}' in ${REGION}..."
   az group create \
     --name "$RESOURCE_GROUP" \
     --location "$REGION" \
@@ -179,13 +220,13 @@ else
   success "Resource group created."
 fi
 
-# ── App Service Plan ───────────────────────────────────────────
+# -- App Service Plan -----------------------------------------
 header "App Service Plan"
 
 if az appservice plan show --name "$APP_SERVICE_PLAN" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
-  warn "App Service Plan '${APP_SERVICE_PLAN}' already exists — reusing."
+  warn "App Service Plan '${APP_SERVICE_PLAN}' already exists -- reusing."
 else
-  info "Creating App Service Plan '${APP_SERVICE_PLAN}' (SKU: ${SKU}, Linux)…"
+  info "Creating App Service Plan '${APP_SERVICE_PLAN}' (SKU: ${SKU}, Linux)..."
   az appservice plan create \
     --name "$APP_SERVICE_PLAN" \
     --resource-group "$RESOURCE_GROUP" \
@@ -195,53 +236,49 @@ else
   success "App Service Plan created."
 fi
 
-# ── Web App ────────────────────────────────────────────────────
+# -- Web App --------------------------------------------------
 header "Web App"
 
 APP_EXISTS=false
 if az webapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
-  warn "Web App '${APP_NAME}' already exists — updating deployment."
+  warn "Web App '${APP_NAME}' already exists -- updating."
   APP_EXISTS=true
 else
-  info "Creating Web App '${APP_NAME}'…"
+  info "Creating Web App '${APP_NAME}' with runtime ${RUNTIME}..."
   az webapp create \
     --name "$APP_NAME" \
     --resource-group "$RESOURCE_GROUP" \
     --plan "$APP_SERVICE_PLAN" \
-    --runtime "NODE:${NODE_VERSION}" \
+    --runtime "$RUNTIME" \
     --output none
   success "Web App '${APP_NAME}' created."
 fi
 
-# ── Persistent storage for SQLite ─────────────────────────────
-header "Persistent Storage"
+# -- Persistent storage & startup -----------------------------
+header "Configuration"
 
-info "Enabling Always On (keeps cron jobs alive) and configuring storage path…"
-
-# Always On keeps the app warm — required for cron jobs (B1+ only, not F1)
+# Always On: keeps cron jobs alive (B1+ only, not available on F1)
 if [[ "$SKU" != "F1" ]]; then
   az webapp config set \
     --name "$APP_NAME" \
     --resource-group "$RESOURCE_GROUP" \
     --always-on true \
+    --startup-file "node app.js" \
     --output none
-  success "Always On enabled (cron jobs will run reliably)."
+  success "Always On enabled + startup command set."
 else
-  warn "SKU is F1 — Always On not available. Cron jobs may be unreliable. Consider upgrading to B1."
+  az webapp config set \
+    --name "$APP_NAME" \
+    --resource-group "$RESOURCE_GROUP" \
+    --startup-file "node app.js" \
+    --output none
+  warn "SKU is F1 -- Always On not available. Cron jobs may sleep. Consider upgrading to B1."
 fi
 
-# Set startup command
-az webapp config set \
-  --name "$APP_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --startup-file "node app.js" \
-  --output none
-success "Startup command set: node app.js"
-
-# ── App Settings (environment variables) ──────────────────────
+# -- App Settings ---------------------------------------------
 header "App Settings"
 
-info "Setting core environment variables…"
+info "Setting core environment variables..."
 az webapp config appsettings set \
   --name "$APP_NAME" \
   --resource-group "$RESOURCE_GROUP" \
@@ -251,36 +288,31 @@ az webapp config appsettings set \
     APP_URL="https://${APP_NAME}.azurewebsites.net" \
     SESSION_SECRET="$SESSION_SECRET" \
     DB_PATH="$DB_PATH" \
-    WEBSITE_NODE_DEFAULT_VERSION="~18" \
+    WEBSITE_NODE_DEFAULT_VERSION="~${NODE_MAJOR}" \
     SCM_DO_BUILD_DURING_DEPLOYMENT="true" \
     WEBSITE_RUN_FROM_PACKAGE="0" \
   --output none
 
 success "Core app settings configured."
 
-# ── Sync .env keys to App Settings ────────────────────────────
+# Sync extra keys from .env
 if [ -f ".env" ]; then
-  info "Syncing non-empty API keys from .env to App Settings…"
+  info "Syncing API keys from .env to App Settings..."
 
   EXTRA_SETTINGS=()
-  # Keys we already set above — don't duplicate
   SKIP_KEYS="NODE_ENV|PORT|APP_URL|SESSION_SECRET|DB_PATH|WEBSITE_NODE_DEFAULT_VERSION|SCM_DO_BUILD_DURING_DEPLOYMENT|WEBSITE_RUN_FROM_PACKAGE"
 
   while IFS='=' read -r KEY VALUE; do
-    # Skip comments, blank lines, and already-handled keys
     [[ "$KEY" =~ ^#.*$   ]] && continue
     [[ -z "$KEY"         ]] && continue
     [[ -z "$VALUE"       ]] && continue
     [[ "$KEY" =~ ^($SKIP_KEYS)$ ]] && continue
 
-    # Strip inline comments and surrounding quotes/whitespace
     VALUE=$(echo "$VALUE" | sed 's/[[:space:]]*#.*//' | tr -d '"' | tr -d "'" | xargs)
     [[ -z "$VALUE"       ]] && continue
-
-    # Skip obvious placeholder values
-    [[ "$VALUE" == *"your_"*     ]] && continue
-    [[ "$VALUE" == *"replace_"*  ]] && continue
-    [[ "$VALUE" == *"xxxxxxx"*   ]] && continue
+    [[ "$VALUE" == *"your_"*    ]] && continue
+    [[ "$VALUE" == *"replace_"* ]] && continue
+    [[ "$VALUE" == *"xxxxxxx"*  ]] && continue
 
     EXTRA_SETTINGS+=("${KEY}=${VALUE}")
   done < .env
@@ -291,29 +323,20 @@ if [ -f ".env" ]; then
       --resource-group "$RESOURCE_GROUP" \
       --settings "${EXTRA_SETTINGS[@]}" \
       --output none
-    success "Synced ${#EXTRA_SETTINGS[@]} additional key(s) from .env:"
+    success "Synced ${#EXTRA_SETTINGS[@]} key(s) from .env:"
     for S in "${EXTRA_SETTINGS[@]}"; do
       KEY_ONLY=$(echo "$S" | cut -d'=' -f1)
       echo -e "      ${CYAN}+ ${KEY_ONLY}${RESET}"
     done
   else
-    warn "No additional keys to sync from .env (all were empty or placeholders)."
+    warn "No additional keys to sync from .env (empty or placeholders only)."
   fi
 fi
 
-# ── Seed database on first deploy ──────────────────────────────
-if [ "$APP_EXISTS" = false ]; then
-  header "Database Seed"
-  info "Scheduling post-deployment DB seed via App Settings trigger…"
-  # We'll add a RUN_SEED flag — app.js can check this on startup
-  # Alternatively, run seed via SSH after deploy (shown in summary)
-  info "Use the SSH command in the summary below to run 'npm run seed' after first deploy."
-fi
-
-# ── Deploy code ────────────────────────────────────────────────
+# -- Deploy code ----------------------------------------------
 header "Deploying Code"
 
-info "Uploading ${DEPLOY_ZIP} to Azure (this may take 1–3 minutes)…"
+info "Uploading ${DEPLOY_ZIP} to Azure (1-3 minutes)..."
 az webapp deploy \
   --name "$APP_NAME" \
   --resource-group "$RESOURCE_GROUP" \
@@ -321,62 +344,61 @@ az webapp deploy \
   --type zip \
   --output none
 
-success "Code deployed successfully."
-
-# ── Clean up local zip ─────────────────────────────────────────
+success "Code deployed."
 rm -f "$DEPLOY_ZIP"
 info "Cleaned up local deploy zip."
 
-# ── Restart app to apply all settings ─────────────────────────
+# -- Restart --------------------------------------------------
 header "Restarting App"
-info "Restarting '${APP_NAME}' to apply all settings…"
+
+info "Restarting '${APP_NAME}' to apply all settings..."
 az webapp restart \
   --name "$APP_NAME" \
   --resource-group "$RESOURCE_GROUP" \
   --output none
 success "App restarted."
 
-# ── Health check ───────────────────────────────────────────────
+# -- Health check ---------------------------------------------
 header "Health Check"
 
 APP_URL="https://${APP_NAME}.azurewebsites.net"
-info "Waiting for app to respond (up to 2 minutes)…"
+info "Waiting for app to respond (up to 2 minutes)..."
 
 HEALTHY=false
 for i in $(seq 1 24); do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$APP_URL" 2>/dev/null || echo "000")
   if [[ "$STATUS" == "200" || "$STATUS" == "302" || "$STATUS" == "301" ]]; then
-    success "App is live! HTTP ${STATUS} ✓"
+    success "App is live! HTTP ${STATUS}"
     HEALTHY=true
     break
   fi
-  echo -e "  ${YELLOW}Attempt ${i}/24 — HTTP ${STATUS} — retrying in 5s…${RESET}"
+  echo -e "  ${YELLOW}Attempt ${i}/24 -- HTTP ${STATUS} -- retrying in 5s...${RESET}"
   sleep 5
 done
 
 if [ "$HEALTHY" = false ]; then
-  warn "App did not respond in time. It may still be starting up."
+  warn "App did not respond within 2 minutes -- it may still be starting."
   warn "Check logs: az webapp log tail --name ${APP_NAME} --resource-group ${RESOURCE_GROUP}"
 fi
 
-# ── Summary ────────────────────────────────────────────────────
-header "Deployment Complete 🚀"
+# -- Summary --------------------------------------------------
+header "Deployment Complete"
 echo ""
-echo -e "  ${BOLD}🌐 App URL:${RESET}           ${CYAN}${APP_URL}${RESET}"
-echo -e "  ${BOLD}📊 Azure Portal:${RESET}      ${CYAN}https://portal.azure.com/#resource/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${APP_NAME}${RESET}"
+echo -e "  ${BOLD}URL:${RESET}              ${CYAN}${APP_URL}${RESET}"
+echo -e "  ${BOLD}Azure Portal:${RESET}     ${CYAN}https://portal.azure.com/#resource/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${APP_NAME}${RESET}"
 echo ""
-echo -e "  ${BOLD}🔑 Admin Login:${RESET}       admin@stratiq.io / Admin@Stratiq2025!"
-echo -e "  ${BOLD}👤 Demo Login:${RESET}        demo@stratiq.io / Demo@1234!"
-echo -e "  ${BOLD}🔐 Session Secret:${RESET}    ${SESSION_SECRET}"
+echo -e "  ${BOLD}Admin login:${RESET}      admin@stratiq.io / Admin@Stratiq2025!"
+echo -e "  ${BOLD}Demo login:${RESET}       demo@stratiq.io / Demo@1234!"
+echo -e "  ${BOLD}Runtime used:${RESET}     ${RUNTIME}"
+echo -e "  ${BOLD}Session secret:${RESET}   ${SESSION_SECRET}"
 echo ""
 
 if [ "$APP_EXISTS" = false ]; then
-  echo -e "  ${BOLD}${YELLOW}⚡ FIRST DEPLOY — Seed the database:${RESET}"
-  echo -e "  ${YELLOW}  Run the following to initialise admin + demo accounts:${RESET}"
+  echo -e "  ${BOLD}${YELLOW}FIRST DEPLOY -- seed the database now:${RESET}"
   echo ""
-  echo -e "    ${BOLD}az webapp ssh --name ${APP_NAME} --resource-group ${RESOURCE_GROUP}${RESET}"
-  echo -e "    ${BOLD}# then inside the SSH session:${RESET}"
-  echo -e "    ${BOLD}cd /home/site/wwwroot && npm run seed${RESET}"
+  echo "    az webapp ssh --name ${APP_NAME} --resource-group ${RESOURCE_GROUP}"
+  echo "    # inside SSH session:"
+  echo "    cd /home/site/wwwroot && npm run seed"
   echo ""
 fi
 
@@ -385,22 +407,20 @@ echo ""
 echo "  # Stream live logs"
 echo "  az webapp log tail --name ${APP_NAME} --resource-group ${RESOURCE_GROUP}"
 echo ""
-echo "  # SSH into the container"
+echo "  # SSH into container"
 echo "  az webapp ssh --name ${APP_NAME} --resource-group ${RESOURCE_GROUP}"
+echo ""
+echo "  # List valid runtimes (if you need to change Node version)"
+echo "  az webapp list-runtimes --os-type linux"
+echo ""
+echo "  # Update a single env var"
+echo "  az webapp config appsettings set --name ${APP_NAME} --resource-group ${RESOURCE_GROUP} --settings ANTHROPIC_API_KEY=sk-ant-..."
 echo ""
 echo "  # Redeploy after code changes"
 echo "  ./deploy-azure.sh"
 echo ""
-echo "  # Update a single env var (e.g. API key)"
-echo "  az webapp config appsettings set --name ${APP_NAME} --resource-group ${RESOURCE_GROUP} --settings ANTHROPIC_API_KEY=sk-ant-..."
-echo ""
-echo "  # Open in browser (macOS)"
-echo "  open ${APP_URL}"
-echo "  # Open in browser (Linux)"
-echo "  xdg-open ${APP_URL}"
-echo ""
 echo "  # Tear down everything"
 echo "  az group delete --name ${RESOURCE_GROUP} --yes --no-wait"
 echo ""
-warn "Save your SESSION_SECRET — you'll need it if you redeploy or scale out."
+warn "Save your SESSION_SECRET above -- required if you redeploy or scale out."
 echo ""
