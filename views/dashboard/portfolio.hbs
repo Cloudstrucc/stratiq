@@ -1,0 +1,99 @@
+{{!-- PORTFOLIO VIEW --}}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <div>
+    <div style="font-size:.8rem;color:var(--text-muted);">Cash available: <strong style="color:var(--accent);">${{formatNumber portfolio.cash_balance}}</strong></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  {{!-- Add Position Form --}}
+  <div class="col-md-5">
+    <div class="chart-wrap">
+      <div class="chart-title mb-3">Add Position</div>
+      <form action="/portfolio/add-position" method="POST">
+        <div class="s-input-group">
+          <label class="s-label">Symbol</label>
+          <input class="s-input" type="text" name="symbol" placeholder="AAPL, BTC, SPY…" required style="text-transform:uppercase;"/>
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="s-label">Shares</label>
+            <input class="s-input" type="number" name="shares" step="0.0001" min="0.0001" placeholder="10" required/>
+          </div>
+          <div class="col-6">
+            <label class="s-label">Buy Price (opt.)</label>
+            <input class="s-input" type="number" name="buy_price" step="0.01" placeholder="Auto"/>
+          </div>
+        </div>
+        <div class="s-input-group mt-2">
+          <label class="s-label">Asset Type</label>
+          <select class="s-input" name="asset_type">
+            <option value="stock">Stock</option>
+            <option value="etf">ETF / Index Fund</option>
+            <option value="crypto">Crypto</option>
+            <option value="bond">Bond / Fixed Income</option>
+          </select>
+        </div>
+        <button type="submit" class="s-btn-full mt-1">Buy &amp; Add to Portfolio</button>
+      </form>
+    </div>
+  </div>
+
+  {{!-- Allocation bars --}}
+  <div class="col-md-7">
+    <div class="chart-wrap">
+      <div class="chart-title mb-3">Asset Allocation</div>
+      {{#if positions.length}}
+        {{#each assetAlloc}}
+        <div class="alloc-row">
+          <div style="width:80px;font-size:.8rem;color:var(--text-muted);">{{type}}</div>
+          <div class="alloc-bar-wrap"><div class="alloc-bar" style="width:{{pct}}%;background:{{color}};"></div></div>
+          <div style="width:45px;font-size:.8rem;text-align:right;font-weight:600;">{{pct}}%</div>
+        </div>
+        {{/each}}
+      {{else}}
+        <div class="empty-state"><i class="bi bi-pie-chart"></i><p>Add positions to see allocation.</p></div>
+      {{/if}}
+    </div>
+  </div>
+</div>
+
+{{!-- All Positions --}}
+<div class="chart-wrap">
+  <div class="chart-title mb-3">Open Positions</div>
+  {{#if positions.length}}
+  <div style="overflow-x:auto;">
+    <table class="s-table">
+      <thead>
+        <tr><th>Symbol</th><th>Type</th><th>Shares</th><th>Avg Cost</th><th>Current</th><th>Value</th><th>P&L</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{#each positions}}
+        <tr>
+          <td><strong>{{symbol}}</strong></td>
+          <td><span class="pill-tag" style="font-size:.72rem;">{{asset_type}}</span></td>
+          <td>{{formatDecimal shares}}</td>
+          <td>${{formatDecimal avg_cost}}</td>
+          <td>${{formatDecimal current_price}}</td>
+          <td>${{formatNumber (multiply shares current_price)}}</td>
+          <td class="{{#gt current_price avg_cost}}text-accent{{else}}text-red{{/gt}}">
+            {{#gt current_price avg_cost}}+{{/gt}}${{formatNumber (subtract (multiply shares current_price) (multiply shares avg_cost))}}
+          </td>
+          <td>
+            <form action="/portfolio/sell/{{id}}" method="POST" style="display:inline;">
+              <input type="hidden" name="shares" value="{{shares}}"/>
+              <button type="submit" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.82rem;font-weight:600;" onclick="return confirm('Sell all {{shares}} {{symbol}}?')">Sell All</button>
+            </form>
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <i class="bi bi-briefcase"></i>
+    <p>No open positions. Add your first trade above.</p>
+  </div>
+  {{/if}}
+</div>

@@ -1,0 +1,51 @@
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3"><div class="stat-card"><div class="lbl">Total Users</div><div class="val">{{stats.totalUsers}}</div><div class="sub up">{{stats.activeUsers}} active</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card"><div class="lbl">Pro+ Users</div><div class="val text-accent">{{stats.proUsers}}</div><div class="sub" style="color:var(--text-muted);">paid plans</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card"><div class="lbl">Total Trades</div><div class="val">{{stats.totalTrades}}</div><div class="sub" style="color:var(--text-muted);">all time</div></div></div>
+  <div class="col-6 col-md-3"><div class="stat-card"><div class="lbl">Emails Sent</div><div class="val">{{stats.emailsSent}}</div><div class="sub" style="color:var(--text-muted);">reports delivered</div></div></div>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-title mb-3">All Users</div>
+  <div style="overflow-x:auto;">
+    <table class="s-table">
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Plan</th><th>Role</th><th>Status</th><th>Joined</th><th>Last Login</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {{#each users}}
+        <tr>
+          <td><strong>{{first_name}} {{last_name}}</strong></td>
+          <td style="color:var(--text-muted);font-size:.82rem;">{{email}}</td>
+          <td>
+            <form action="/admin/users/{{id}}/plan" method="POST" style="display:inline;">
+              <select class="s-input" name="plan" style="padding:4px 8px;font-size:.78rem;width:auto;" onchange="this.form.submit()">
+                <option value="free" {{#eq plan 'free'}}selected{{/eq}}>Free</option>
+                <option value="pro" {{#eq plan 'pro'}}selected{{/eq}}>Pro</option>
+                <option value="unlimited" {{#eq plan 'unlimited'}}selected{{/eq}}>Unlimited</option>
+              </select>
+            </form>
+          </td>
+          <td><span class="pill-tag" style="font-size:.72rem;">{{role}}</span></td>
+          <td>
+            <span class="risk-badge {{#if is_active}}risk-low{{else}}risk-high{{/if}}" style="font-size:.7rem;">
+              {{#if is_active}}Active{{else}}Inactive{{/if}}
+            </span>
+          </td>
+          <td style="font-size:.8rem;color:var(--text-muted);">{{formatDate created_at}}</td>
+          <td style="font-size:.8rem;color:var(--text-muted);">{{formatDate last_login_at}}</td>
+          <td>
+            {{#neq role 'admin'}}
+            <form action="/admin/users/{{id}}/toggle" method="POST" style="display:inline;">
+              <button type="submit" style="background:none;border:none;color:{{#if is_active}}var(--red){{else}}var(--accent){{/if}};cursor:pointer;font-size:.8rem;font-weight:600;">
+                {{#if is_active}}Deactivate{{else}}Activate{{/if}}
+              </button>
+            </form>
+            {{/neq}}
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>

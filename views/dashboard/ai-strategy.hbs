@@ -1,0 +1,138 @@
+<div class="row g-4">
+  <div class="col-lg-6">
+    <h5 class="section-heading">Choose a Strategy</h5>
+    <form action="/portfolio/strategy" method="POST">
+      <div class="row g-2 mb-4" id="stratCards">
+        {{#each strategies}}
+        <div class="col-6">
+          <label class="strat-card {{#eq this.key ../portfolio.strategy_key}}sel{{/eq}}">
+            <input type="radio" name="strategy_key" value="{{key}}" style="display:none;"
+              {{#eq this.key ../portfolio.strategy_key}}checked{{/eq}}/>
+            <div class="sel-dot"></div>
+            <div class="name">{{name}}</div>
+            <div class="desc">{{desc}}</div>
+            <span class="risk-badge risk-{{riskClass}}">{{risk}}</span>
+          </label>
+        </div>
+        {{/each}}
+      </div>
+
+      <div class="chart-wrap mb-3">
+        <div class="chart-title mb-2">Or describe your own strategy</div>
+        <div class="ai-prompt-box">
+          <textarea name="strategy_prompt" rows="3"
+            placeholder="e.g. 'Focus on dividend aristocrats. Reinvest dividends. Avoid tech. Never more than 5% per stock.'"
+          >{{portfolio.strategy_prompt}}</textarea>
+        </div>
+      </div>
+
+      <div class="chart-wrap mb-3">
+        <div class="chart-title mb-3">Risk &amp; Budget Settings</div>
+        <div class="s-input-group">
+          <label class="s-label">Risk Tolerance</label>
+          <select class="s-input" name="risk_level">
+            <option value="conservative" {{#eq portfolio.risk_level 'conservative'}}selected{{/eq}}>Conservative</option>
+            <option value="moderate" {{#eq portfolio.risk_level 'moderate'}}selected{{/eq}}>Moderate</option>
+            <option value="aggressive" {{#eq portfolio.risk_level 'aggressive'}}selected{{/eq}}>Aggressive</option>
+            <option value="speculative" {{#eq portfolio.risk_level 'speculative'}}selected{{/eq}}>Speculative</option>
+          </select>
+        </div>
+        <div class="s-input-group">
+          <label class="s-label">Rebalance Frequency</label>
+          <select class="s-input" name="rebalance_freq">
+            <option value="daily" {{#eq portfolio.rebalance_freq 'daily'}}selected{{/eq}}>Daily</option>
+            <option value="weekly" {{#eq portfolio.rebalance_freq 'weekly'}}selected{{/eq}}>Weekly</option>
+            <option value="monthly" {{#eq portfolio.rebalance_freq 'monthly'}}selected{{/eq}}>Monthly</option>
+            <option value="quarterly" {{#eq portfolio.rebalance_freq 'quarterly'}}selected{{/eq}}>Quarterly</option>
+          </select>
+        </div>
+        <div class="d-flex align-items-center justify-content-between py-2" style="border-top:1px solid var(--border);">
+          <div>
+            <div style="font-weight:600;font-size:.9rem;">AI Auto-Trading</div>
+            <div style="font-size:.78rem;color:var(--text-muted);">AI executes trades daily at market open (Pro+)</div>
+          </div>
+          <label style="cursor:pointer;">
+            <input type="checkbox" name="ai_enabled" value="1" style="accent-color:var(--accent);width:18px;height:18px;"
+              {{#if portfolio.ai_enabled}}checked{{/if}}/>
+          </label>
+        </div>
+      </div>
+
+      <button type="submit" class="s-btn-full">Apply Strategy Settings</button>
+    </form>
+  </div>
+
+  <div class="col-lg-6">
+    <h5 class="section-heading">AI Strategy Advisor</h5>
+    <div id="aiConvo" class="ai-convo-wrap mb-3">
+      {{#each conversations}}
+      <div class="ai-msg">
+        <div class="role {{role}}">
+          {{#eq role 'user'}}<i class="bi bi-person-fill"></i> You{{/eq}}
+          {{#eq role 'assistant'}}<i class="bi bi-stars"></i> Stratiq AI{{/eq}}
+        </div>
+        <div class="body">{{content}}</div>
+      </div>
+      {{else}}
+      <div class="empty-state">
+        <i class="bi bi-robot"></i>
+        <p>Ask your AI advisor anything about your strategy or portfolio.</p>
+      </div>
+      {{/each}}
+    </div>
+
+    <div class="ai-prompt-box" id="aiBox">
+      <textarea id="aiInput" rows="2" placeholder="Ask anything about your strategy…"></textarea>
+      <button class="ai-send" id="aiSend" onclick="sendAiChat()">
+        <i class="bi bi-send-fill"></i>
+      </button>
+    </div>
+    <div id="aiTyping" style="display:none;font-size:.78rem;color:var(--text-muted);margin-top:8px;">
+      <i class="bi bi-stars"></i> AI is thinking…
+    </div>
+  </div>
+</div>
+
+<script>
+  // Strategy card radio selection
+  document.querySelectorAll('.strat-card input[type=radio]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.querySelectorAll('.strat-card').forEach(c => c.classList.remove('sel'));
+      radio.closest('.strat-card').classList.add('sel');
+    });
+  });
+
+  async function sendAiChat() {
+    const input = document.getElementById('aiInput');
+    const msg   = input.value.trim();
+    if (!msg) return;
+
+    input.value = '';
+    const convo = document.getElementById('aiConvo');
+    const typing = document.getElementById('aiTyping');
+
+    // Add user message
+    convo.innerHTML += `<div class="ai-msg"><div class="role user"><i class="bi bi-person-fill"></i> You</div><div class="body">${msg}</div></div>`;
+    typing.style.display = 'block';
+    convo.scrollTop = convo.scrollHeight;
+
+    try {
+      const res  = await fetch('/ai/chat', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ message: msg }),
+      });
+      const data = await res.json();
+      typing.style.display = 'none';
+      const reply = data.reply || data.error || 'No response.';
+      convo.innerHTML += `<div class="ai-msg"><div class="role ai"><i class="bi bi-stars"></i> Stratiq AI</div><div class="body">${reply}</div></div>`;
+      convo.scrollTop = convo.scrollHeight;
+    } catch {
+      typing.style.display = 'none';
+      convo.innerHTML += `<div class="ai-msg"><div class="role ai">Error</div><div class="body">Could not reach AI advisor.</div></div>`;
+    }
+  }
+
+  document.getElementById('aiInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAiChat(); }
+  });
+</script>

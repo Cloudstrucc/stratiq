@@ -1,0 +1,57 @@
+<div class="row g-3">
+  <div class="col-md-5">
+    <div class="chart-wrap">
+      <div class="chart-title mb-3">Email Report Settings</div>
+      <form action="/dashboard/settings" method="POST">
+        <div class="s-input-group">
+          <label class="s-label">Report Email</label>
+          <input class="s-input" type="email" name="report_email" value="{{user.report_email}}" placeholder="{{user.email}}"/>
+        </div>
+        <div class="s-input-group">
+          <label class="s-label">Frequency</label>
+          <select class="s-input" name="report_freq">
+            <option value="daily" {{#eq user.report_freq 'daily'}}selected{{/eq}}>Daily (8:00 AM)</option>
+            <option value="weekdays" {{#eq user.report_freq 'weekdays'}}selected{{/eq}}>Weekdays Only</option>
+            <option value="weekly" {{#eq user.report_freq 'weekly'}}selected{{/eq}}>Weekly Summary</option>
+            <option value="never" {{#eq user.report_freq 'never'}}selected{{/eq}}>Never</option>
+          </select>
+        </div>
+        <div class="s-label mb-2">Report Contents</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+          <label class="check-row"><input type="checkbox" name="include_pnl" {{#if prefs.include_pnl}}checked{{/if}} style="accent-color:var(--accent);"/> Portfolio P&amp;L Summary</label>
+          <label class="check-row"><input type="checkbox" name="include_trades" {{#if prefs.include_trades}}checked{{/if}} style="accent-color:var(--accent);"/> AI Trade Commentary</label>
+          <label class="check-row"><input type="checkbox" name="include_ai_commentary" {{#if prefs.include_ai_commentary}}checked{{/if}} style="accent-color:var(--accent);"/> Market News Digest</label>
+          <label class="check-row"><input type="checkbox" name="include_news" {{#if prefs.include_news}}checked{{/if}} style="accent-color:var(--accent);"/> Strategy Health Score</label>
+          <label class="check-row"><input type="checkbox" name="include_positions" {{#if prefs.include_positions}}checked{{/if}} style="accent-color:var(--accent);"/> Individual Position Details</label>
+        </div>
+        <button type="submit" class="s-btn-full">Save Report Settings</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-md-7">
+    <div class="chart-wrap">
+      <div class="chart-title mb-3">Recent Reports</div>
+      {{#if reports.length}}
+        {{#each reports}}
+        <div class="s-card mb-2" style="padding:14px;cursor:pointer;">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div style="font-family:var(--font-display);font-weight:700;font-size:.9rem;">Daily Report · {{report_date}}</div>
+              <div style="font-size:.8rem;color:var(--text-muted);">{{total_trades}} trade(s){{#if email_sent}} · Emailed{{/if}}</div>
+            </div>
+            <span class="risk-badge {{#gt daily_pnl 0}}risk-low{{else}}risk-high{{/gt}}">
+              {{#gt daily_pnl 0}}+{{/gt}}${{formatNumber daily_pnl}}
+            </span>
+          </div>
+        </div>
+        {{/each}}
+      {{else}}
+        <div class="empty-state">
+          <i class="bi bi-envelope-paper"></i>
+          <p>No reports yet. Your first report will be generated tomorrow morning.</p>
+        </div>
+      {{/if}}
+    </div>
+  </div>
+</div>

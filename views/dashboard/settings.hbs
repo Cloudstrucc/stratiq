@@ -1,0 +1,73 @@
+<div class="row g-3 justify-content-center">
+  <div class="col-md-7">
+    <div class="chart-wrap mb-3">
+      <div class="chart-title mb-3">Account Settings</div>
+      <form action="/dashboard/settings" method="POST">
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="s-label">First Name</label>
+            <input class="s-input" type="text" name="first_name" value="{{user.first_name}}" required/>
+          </div>
+          <div class="col-6">
+            <label class="s-label">Last Name</label>
+            <input class="s-input" type="text" name="last_name" value="{{user.last_name}}" required/>
+          </div>
+        </div>
+        <div class="s-input-group">
+          <label class="s-label">Email</label>
+          <input class="s-input" type="email" value="{{user.email}}" disabled style="opacity:.5;cursor:not-allowed;"/>
+        </div>
+        <div class="s-input-group">
+          <label class="s-label">Timezone</label>
+          <select class="s-input" name="timezone">
+            <option value="America/Toronto" {{#eq user.timezone 'America/Toronto'}}selected{{/eq}}>Eastern (ET)</option>
+            <option value="America/Chicago" {{#eq user.timezone 'America/Chicago'}}selected{{/eq}}>Central (CT)</option>
+            <option value="America/Denver" {{#eq user.timezone 'America/Denver'}}selected{{/eq}}>Mountain (MT)</option>
+            <option value="America/Vancouver" {{#eq user.timezone 'America/Vancouver'}}selected{{/eq}}>Pacific (PT)</option>
+            <option value="Europe/London" {{#eq user.timezone 'Europe/London'}}selected{{/eq}}>London (GMT)</option>
+          </select>
+        </div>
+        <div class="s-input-group">
+          <label class="s-label">Currency Display</label>
+          <select class="s-input" name="currency">
+            <option value="USD" {{#eq user.currency 'USD'}}selected{{/eq}}>USD ($)</option>
+            <option value="CAD" {{#eq user.currency 'CAD'}}selected{{/eq}}>CAD (CA$)</option>
+            <option value="EUR" {{#eq user.currency 'EUR'}}selected{{/eq}}>EUR (€)</option>
+            <option value="GBP" {{#eq user.currency 'GBP'}}selected{{/eq}}>GBP (£)</option>
+          </select>
+        </div>
+        <button type="submit" class="s-btn-full">Save Account Settings</button>
+      </form>
+    </div>
+
+    <div class="chart-wrap mb-3">
+      <div class="chart-title mb-3">Theme</div>
+      <div class="d-flex align-items-center justify-content-between">
+        <div>
+          <div style="font-weight:600;font-size:.9rem;">Dark Mode</div>
+          <div style="font-size:.78rem;color:var(--text-muted);">Toggle light/dark interface</div>
+        </div>
+        <div class="theme-btn" onclick="toggleTheme()"><i class="bi bi-moon-fill" id="themeIcon2"></i></div>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      <div class="chart-title mb-3">Danger Zone</div>
+      <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:12px;">
+        Reset your simulated portfolio back to starting budget. All positions and trade history will be cleared.
+      </p>
+      <form action="/portfolio/reset" method="POST" onsubmit="return confirm('Reset portfolio? This cannot be undone.');">
+        <button type="submit" style="background:none;border:1px solid var(--red);border-radius:8px;padding:9px 20px;color:var(--red);cursor:pointer;font-size:.875rem;font-weight:600;width:100%;">
+          <i class="bi bi-trash3 me-1"></i> Reset Simulated Portfolio
+        </button>
+      </form>
+    </div>
+
+    <div class="mt-3" style="text-align:center;">
+      <div class="pill-tag">Plan: <strong>{{user.plan}}</strong></div>
+      {{#eq user.plan 'free'}}
+        <a href="/pricing" style="color:var(--accent);text-decoration:none;font-size:.85rem;margin-left:10px;">Upgrade to Pro →</a>
+      {{/eq}}
+    </div>
+  </div>
+</div>

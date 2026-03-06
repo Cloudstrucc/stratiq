@@ -1,0 +1,47 @@
+# ─── Environment & Secrets ───────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ─── Database ────────────────────────────────
+db/*.db
+db/*.db-shm
+db/*.db-wal
+db/*.sqlite
+db/*.sqlite3
+
+# ─── Dependencies ────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── Logs ────────────────────────────────────
+logs/
+*.log
+
+# ─── OS & Editor ─────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Build & Misc ────────────────────────────
+dist/
+build/
+.cache/
+coverage/
+.nyc_output/
+
+# ─── Session store (if file-based) ───────────
+sessions/

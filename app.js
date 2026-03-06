@@ -1,0 +1,161 @@
+/**
+ *  Stratiq — Main Application
+ *  npm run seed   → initialise DB + admin account
+ *  npm run dev    → start with nodemon
+ *  npm start      → production start
+ */
+
+require('dotenv').config();
+
+const express    = require('express');
+const session    = require('express-session');
+const flash      = require('connect-flash');
+const passport   = require('./config/passport');
+const hbs        = require('express-handlebars');
+const path       = require('path');
+const SQLiteStore = require('connect-sqlite3')(session);
+
+const { setLocals }   = require('./middleware/auth');
+const { STRATEGIES }  = require('./services/aiService');
+
+// ── Create app ────────────────────────────────────────────────
+const app  = express();
+const PORT = process.env.PORT || 3000;
+
+// ── Template engine ───────────────────────────────────────────
+const hbsEngine = hbs.create({
+  extname: '.hbs',
+  defaultLayout: 'main',
+  layoutsDir:  path.join(__dirname, 'views/layouts'),
+  partialsDir: path.join(__dirname, 'views/partials'),
+  helpers: {
+    // Equality check
+    eq:  (a, b) => a == b,
+    neq: (a, b) => a != b,
+    gt:  (a, b) => parseFloat(a) > parseFloat(b),
+    lt:  (a, b) => parseFloat(a) < parseFloat(b),
+
+    // Math helpers
+    multiply: (a, b) => (parseFloat(a) * parseFloat(b)) || 0,
+    subtract: (a, b) => (parseFloat(a) - parseFloat(b)) || 0,
+
+    // Formatting
+    formatNumber: (n) => {
+      const num = parseFloat(n) || 0;
+      return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    },
+    formatDecimal: (n) => {
+      const num = parseFloat(n) || 0;
+      return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+    formatPct: (n) => {
+      const num = parseFloat(n) || 0;
+      return (num >= 0 ? '+' : '') + num.toFixed(2);
+    },
+    formatDate: (d) => {
+      if (!d) return '—';
+      return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    },
+    cashPct: (cash, budget) => {
+      if (!budget) return 0;
+      return ((parseFloat(cash) / parseFloat(budget)) * 100).toFixed(1);
+    },
+
+    // JSON for templates
+    json: (obj) => JSON.stringify(obj),
+  }
+});
+
+app.engine('.hbs', hbsEngine.engine);
+app.set('view engine', '.hbs');
+app.set('views', path.join(__dirname, 'views'));
+
+// ── Middleware ────────────────────────────────────────────────
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Session
+app.use(session({
+  store:  new SQLiteStore({ db: 'sessions.db', dir: './db' }),
+  secret: process.env.SESSION_SECRET || 'stratiq-dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  },
+  name: 'stratiq.sid',
+}));
+
+// Auth
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(flash());
+app.use(setLocals);
+
+// ── Routes ────────────────────────────────────────────────────
+app.use('/auth',        require('./routes/auth'));
+app.use('/dashboard',   require('./routes/dashboard'));
+app.use('/portfolio',   require('./routes/portfolio'));
+app.use('/ai',          require('./routes/ai'));
+app.use('/admin',       require('./routes/admin'));
+
+// Landing page
+app.get('/', (req, res) => {
+  if (req.isAuthenticated()) return res.redirect('/dashboard');
+  res.render('index', { layout: 'main', title: 'Stratiq — Simulate. Strategize. Grow.' });
+});
+
+// Pricing page
+app.get('/pricing', (req, res) => {
+  res.render('pricing', { layout: 'main', title: 'Pricing — Stratiq' });
+});
+
+// ── Strategy data for AI strategy page ───────────────────────
+app.use((req, res, next) => {
+  // Expose strategy list to all views
+  res.locals.strategies = Object.entries(STRATEGIES).map(([key, val]) => ({
+    key,
+    name: val.name,
+    desc: (val.system.split('\n')[1] || '').replace('Rules:','').trim().slice(0, 50),
+    risk: key === 'buffett' || key === 'dalio' || key === 'dca_index' ? 'Low'
+        : key === 'lynch'   ? 'Medium'
+        : 'High',
+    riskClass: key === 'buffett' || key === 'dalio' || key === 'dca_index' ? 'low'
+             : key === 'lynch' ? 'med' : 'high',
+  }));
+  next();
+});
+
+// ── 404 ───────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).render('index', {
+    layout: 'main',
+    title: 'Page Not Found — Stratiq',
+  });
+});
+
+// ── Error handler ─────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  req.flash('error', 'Something went wrong. Please try again.');
+  res.redirect(req.isAuthenticated() ? '/dashboard' : '/');
+});
+
+// ── Start server ──────────────────────────────────────────────
+app.listen(PORT, () => {
+  console.log('\n' + '─'.repeat(50));
+  console.log(`🚀 Stratiq running → http://localhost:${PORT}`);
+  console.log(`📋 Environment    → ${process.env.NODE_ENV || 'development'}`);
+  console.log('─'.repeat(50) + '\n');
+
+  // Start cron jobs
+  if (process.env.NODE_ENV !== 'test') {
+    require('./jobs/dailyReport').startAll();
+  }
+});
+
+module.exports = app;
