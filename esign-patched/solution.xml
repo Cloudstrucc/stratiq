@@ -4,7 +4,7 @@
     <UniqueName>ESignatureBroker</UniqueName>
     <LocalizedNames><LocalizedName description="E-Signature Broker" languagecode="1033"/></LocalizedNames>
     <Descriptions><Description description="E-Signature Broker Service for Elections Canada" languagecode="1033"/></Descriptions>
-    <Version>1.0.0.29</Version>
+    <Version>1.0.0.30</Version>
     <Managed>0</Managed>
     <Publisher>
       <UniqueName>cs</UniqueName>
