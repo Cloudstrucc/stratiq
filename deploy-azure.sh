@@ -200,8 +200,10 @@ zip -r "$DEPLOY_ZIP" . \
   --exclude "db/sessions.db" \
   --exclude "logs/*" \
   --exclude "$DEPLOY_ZIP" \
+  --exclude "stratiq-deploy/*" \
   --exclude "deploy-azure.sh" \
   --exclude ".DS_Store" \
+  --exclude ".claude/*" \
   -q
 
 success "Package created: ${DEPLOY_ZIP} ($(du -sh "$DEPLOY_ZIP" | cut -f1))"
@@ -291,6 +293,7 @@ az webapp config appsettings set \
     WEBSITE_NODE_DEFAULT_VERSION="~${NODE_MAJOR}" \
     SCM_DO_BUILD_DURING_DEPLOYMENT="true" \
     WEBSITE_RUN_FROM_PACKAGE="0" \
+    WEBSITES_CONTAINER_START_TIME_LIMIT="300" \
   --output none
 
 success "Core app settings configured."
