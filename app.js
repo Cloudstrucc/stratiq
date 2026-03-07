@@ -13,6 +13,8 @@ const flash      = require('connect-flash');
 const passport   = require('./config/passport');
 const hbs        = require('express-handlebars');
 const path       = require('path');
+const helmet     = require('helmet');
+const rateLimit  = require('express-rate-limit');
 const SQLiteStore = require('connect-sqlite3')(session);
 
 const { setLocals }   = require('./middleware/auth');
@@ -21,6 +23,57 @@ const { STRATEGIES }  = require('./services/aiService');
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
 const PORT = process.env.PORT || 3000;
+
+// Trust first proxy (Azure App Service reverse proxy)
+app.set('trust proxy', 1);
+
+// ── Security headers ─────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+      styleSrc:   ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com"],
+      imgSrc:     ["'self'", "data:", "https:"],
+      fontSrc:    ["'self'", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
+      connectSrc:    ["'self'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+    },
+  },
+}));
+
+// ── Rate limiters ────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    req.flash('error', 'Too many requests. Please wait a few minutes and try again.');
+    res.status(429).redirect('back');
+  },
+});
+
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Rate limit exceeded. Please wait before making more AI requests.' });
+  },
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    req.flash('error', 'Too many requests. Please wait a few minutes and try again.');
+    res.status(429).redirect('back');
+  },
+});
 
 // ── Template engine ───────────────────────────────────────────
 const hbsEngine = hbs.create({
@@ -97,11 +150,11 @@ app.use(flash());
 app.use(setLocals);
 
 // ── Routes ────────────────────────────────────────────────────
-app.use('/auth',        require('./routes/auth'));
-app.use('/dashboard',   require('./routes/dashboard'));
-app.use('/portfolio',   require('./routes/portfolio'));
-app.use('/ai',          require('./routes/ai'));
-app.use('/admin',       require('./routes/admin'));
+app.use('/auth',      authLimiter,    require('./routes/auth'));
+app.use('/dashboard',                 require('./routes/dashboard'));
+app.use('/portfolio', generalLimiter, require('./routes/portfolio'));
+app.use('/ai',        aiLimiter,      require('./routes/ai'));
+app.use('/admin',     generalLimiter, require('./routes/admin'));
 
 // Landing page
 app.get('/', (req, res) => {
@@ -132,6 +185,9 @@ app.use((req, res, next) => {
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((req, res) => {
+  if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    return res.status(404).json({ error: 'Not found' });
+  }
   res.status(404).render('index', {
     layout: 'main',
     title: 'Page Not Found — Stratiq',
@@ -140,9 +196,27 @@ app.use((req, res) => {
 
 // ── Error handler ─────────────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  req.flash('error', 'Something went wrong. Please try again.');
-  res.redirect(req.isAuthenticated() ? '/dashboard' : '/');
+  const userId = req.user?.id || 'anonymous';
+  console.error(`[ERROR] ${req.method} ${req.originalUrl} | user=${userId} |`, err.stack || err);
+
+  const status = err.status || err.statusCode || 500;
+
+  const wantsJson = req.xhr
+    || (req.headers.accept && req.headers.accept.includes('application/json'))
+    || req.path.startsWith('/ai');
+
+  if (wantsJson) {
+    return res.status(status).json({
+      error: status === 500
+        ? 'Internal server error. Please try again.'
+        : err.message || 'An error occurred.',
+    });
+  }
+
+  if (req.flash) {
+    req.flash('error', 'Something went wrong. Please try again.');
+  }
+  res.status(status).redirect(req.isAuthenticated() ? '/dashboard' : '/');
 });
 
 // ── Start server ──────────────────────────────────────────────

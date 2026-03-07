@@ -38,8 +38,8 @@ db.serialize(async () => {
     const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
     const statements = schema
       .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
+      .map(s => s.replace(/--[^\n]*/g, '').trim())
+      .filter(s => s.length > 0);
 
     for (const stmt of statements) {
       await run(db, stmt);
@@ -63,6 +63,15 @@ db.serialize(async () => {
     } else {
       adminId = existingAdmin.id;
       console.log(`ℹ️  Admin already exists → ${ADMIN_EMAIL}`);
+    }
+
+    // Admin portfolio
+    const existingAdminPort = await get(db,
+      'SELECT id FROM portfolios WHERE user_id = ? AND is_default = 1', [adminId]);
+    if (!existingAdminPort) {
+      await run(db, `
+        INSERT INTO portfolios (user_id, name, strategy_key, risk_level, rebalance_freq, ai_enabled, initial_budget, cash_balance, is_default)
+        VALUES (?, 'Admin Portfolio', 'manual', 'moderate', 'weekly', 0, 1000000, 1000000, 1)`, [adminId]);
     }
 
     // Admin report prefs
