@@ -1,0 +1,169 @@
+{
+    "name": "ESign - Get Document Content",
+    "properties": {
+        "definition": {
+            "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+                "$authentication": {
+                    "defaultValue": {},
+                    "type": "SecureObject"
+                },
+                "$connections": {
+                    "defaultValue": {},
+                    "type": "Object"
+                }
+            },
+            "triggers": {
+                "Recurrence": {
+                    "type": "Recurrence",
+                    "recurrence": {
+                        "interval": 1,
+                        "frequency": "Hour"
+                    }
+                }
+            },
+            "actions": {
+                "Authenticate": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "POST",
+                        "uri": "https://account.assuresign.net/api/v3.7/authentication/apiUser",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "accept": "application/json"
+                        },
+                        "body": {
+                            "username": "elections-broker-service_apdFUAke",
+                            "apiKey": "d55q5AeThjLeO4SR1mfVSz30t3WF4jzg"
+                        }
+                    },
+                    "runAfter": {}
+                },
+                "Initialize_AssureSignToken": {
+                    "type": "InitializeVariable",
+                    "inputs": {
+                        "variables": [
+                            {
+                                "name": "AssureSignToken",
+                                "type": "string",
+                                "value": "@{concat('bearer ', body('Authenticate')?['result']?['token'])}"
+                            }
+                        ]
+                    },
+                    "runAfter": {
+                        "Authenticate": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Get_Completed_Envelopes": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                        "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "operationId": "GetItems"
+                        },
+                        "parameters": {
+                            "entityName": "cs_envelopes",
+                            "$filter": "statuscode eq 5"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Process_Each_Envelope": {
+                    "type": "Foreach",
+                    "foreach": "@outputs('Get_Completed_Envelopes')?['body/value']",
+                    "actions": {
+                        "Get_Documents": {
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                    "operationId": "GetItems"
+                                },
+                                "parameters": {
+                                    "entityName": "cs_documents",
+                                    "$filter": "@{concat('cs_envelopeid eq ', items('Process_Each_Envelope')?['cs_envelopeid'], ' and cs_signedcontent eq null')}"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                            },
+                            "runAfter": {}
+                        },
+                        "Process_Each_Document": {
+                            "type": "Foreach",
+                            "foreach": "@outputs('Get_Documents')?['body/value']",
+                            "actions": {
+                                "HTTP_Get_Document_Content": {
+                                    "type": "Http",
+                                    "inputs": {
+                                        "method": "GET",
+                                        "uri": "@{concat('https://ca1.assuresign.net/api/documentnow/v3.7/envelopes/', items('Process_Each_Envelope')?['cs_envelopeid'], '/documents/', items('Process_Each_Document')?['cs_documentid'], '/content')}",
+                                        "headers": {
+                                            "Authorization": "@{variables('AssureSignToken')}",
+                                            "X-AS-UserContext": "fred.pearson@leonardocompany.ca:b47945a4-e2ca-4304-8a84-96918989e464",
+                                            "accept": "application/json"
+                                        }
+                                    },
+                                    "runAfter": {}
+                                },
+                                "Update_Document_Content": {
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connectionName": "shared_commondataserviceforapps",
+                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                            "operationId": "UpdateOnlyRecord"
+                                        },
+                                        "parameters": {
+                                            "entityName": "cs_documents",
+                                            "recordId": "@{items('Process_Each_Document')?['cs_documentid']}",
+                                            "item/statecode": 0,
+                                            "item/statuscode": 1,
+                                            "item/cs_signedcontent": "@{base64(body('HTTP_Get_Document_Content'))}"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                    },
+                                    "runAfter": {
+                                        "HTTP_Get_Document_Content": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Get_Documents": [
+                                    "Succeeded"
+                                ]
+                            }
+                        }
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                }
+            }
+        },
+        "schemaVersion": "1.0.0.0",
+        "connectionReferences": {
+            "shared_commondataserviceforapps": {
+                "runtimeSource": "invoker",
+                "connection": {
+                    "connectionReferenceLogicalName": "cs_sharecommondataserviceforapps"
+                },
+                "api": {
+                    "name": "shared_commondataserviceforapps"
+                }
+            }
+        }
+    }
+}

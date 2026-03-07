@@ -1,0 +1,453 @@
+{
+    "name": "ESign - Status Sync",
+    "properties": {
+        "definition": {
+            "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+                "$authentication": {
+                    "defaultValue": {},
+                    "type": "SecureObject"
+                },
+                "$connections": {
+                    "defaultValue": {},
+                    "type": "Object"
+                }
+            },
+            "triggers": {
+                "Recurrence": {
+                    "type": "Recurrence",
+                    "recurrence": {
+                        "interval": 30,
+                        "frequency": "Minute"
+                    }
+                }
+            },
+            "actions": {
+                "Authenticate": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "POST",
+                        "uri": "https://account.assuresign.net/api/v3.7/authentication/apiUser",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "accept": "application/json"
+                        },
+                        "body": {
+                            "username": "elections-broker-service_apdFUAke",
+                            "apiKey": "d55q5AeThjLeO4SR1mfVSz30t3WF4jzg"
+                        }
+                    },
+                    "runAfter": {}
+                },
+                "Initialize_AssureSignToken": {
+                    "type": "InitializeVariable",
+                    "inputs": {
+                        "variables": [
+                            {
+                                "name": "AssureSignToken",
+                                "type": "string",
+                                "value": "@{concat('bearer ', body('Authenticate')?['result']?['token'])}"
+                            }
+                        ]
+                    },
+                    "runAfter": {
+                        "Authenticate": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Get_InProcess_Envelopes": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                        "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "operationId": "GetItems"
+                        },
+                        "parameters": {
+                            "entityName": "cs_envelopes",
+                            "$filter": "statuscode eq 4"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Process_Each_Envelope": {
+                    "type": "Foreach",
+                    "foreach": "@outputs('Get_InProcess_Envelopes')?['body/value']",
+                    "actions": {
+                        "HTTP_Get_Envelope_Status": {
+                            "type": "Http",
+                            "inputs": {
+                                "method": "GET",
+                                "uri": "@{concat('https://ca1.assuresign.net/api/documentnow/v3.7/envelopes/', items('Process_Each_Envelope')?['cs_envelopeid'], '/status')}",
+                                "headers": {
+                                    "Authorization": "@{variables('AssureSignToken')}",
+                                    "X-AS-UserContext": "fred.pearson@leonardocompany.ca:b47945a4-e2ca-4304-8a84-96918989e464",
+                                    "accept": "application/json"
+                                }
+                            },
+                            "runAfter": {}
+                        },
+                        "HTTP_Get_Signers_Status": {
+                            "type": "Http",
+                            "inputs": {
+                                "method": "GET",
+                                "uri": "@{concat('https://ca1.assuresign.net/api/documentnow/v3.7/envelopes/', items('Process_Each_Envelope')?['cs_envelopeid'], '/signers')}",
+                                "headers": {
+                                    "Authorization": "@{variables('AssureSignToken')}",
+                                    "X-AS-UserContext": "fred.pearson@leonardocompany.ca:b47945a4-e2ca-4304-8a84-96918989e464",
+                                    "accept": "application/json"
+                                }
+                            },
+                            "runAfter": {
+                                "HTTP_Get_Envelope_Status": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Update_Signers_Status": {
+                            "type": "Foreach",
+                            "foreach": "@body('HTTP_Get_Signers_Status')?['result']?['signers']",
+                            "actions": {
+                                "Get_Signer_Record": {
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connectionName": "shared_commondataserviceforapps",
+                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                            "operationId": "GetItems"
+                                        },
+                                        "parameters": {
+                                            "entityName": "cs_signers",
+                                            "$filter": "@{concat('cs_envelopesignerid eq ', items('Update_Signers_Status')?['signerID'])}"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                    },
+                                    "runAfter": {}
+                                },
+                                "Switch_Signer_Status": {
+                                    "type": "Switch",
+                                    "expression": "@items('Update_Signers_Status')?['status']",
+                                    "cases": {
+                                        "Case_Pending": {
+                                            "case": "Pending",
+                                            "actions": {
+                                                "Update_Signer_Pending": {
+                                                    "type": "OpenApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connectionName": "shared_commondataserviceforapps",
+                                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                            "operationId": "UpdateOnlyRecord"
+                                                        },
+                                                        "parameters": {
+                                                            "entityName": "cs_signers",
+                                                            "recordId": "@{first(outputs('Get_Signer_Record')?['body/value'])?['cs_signerid']}",
+                                                            "item/statecode": 0,
+                                                            "item/statuscode": 1,
+                                                            "item/cs_signeddate": "@{items('Update_Signers_Status')?['signedDate']}",
+                                                            "item/cs_vieweddate": "@{items('Update_Signers_Status')?['viewedDate']}",
+                                                            "item/cs_declinedreason": "@{items('Update_Signers_Status')?['declineReason']}"
+                                                        },
+                                                        "authentication": "@parameters('$authentication')"
+                                                    },
+                                                    "runAfter": {}
+                                                }
+                                            }
+                                        },
+                                        "Case_Viewed": {
+                                            "case": "Viewed",
+                                            "actions": {
+                                                "Update_Signer_Viewed": {
+                                                    "type": "OpenApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connectionName": "shared_commondataserviceforapps",
+                                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                            "operationId": "UpdateOnlyRecord"
+                                                        },
+                                                        "parameters": {
+                                                            "entityName": "cs_signers",
+                                                            "recordId": "@{first(outputs('Get_Signer_Record')?['body/value'])?['cs_signerid']}",
+                                                            "item/statecode": 0,
+                                                            "item/statuscode": 2,
+                                                            "item/cs_signeddate": "@{items('Update_Signers_Status')?['signedDate']}",
+                                                            "item/cs_vieweddate": "@{items('Update_Signers_Status')?['viewedDate']}",
+                                                            "item/cs_declinedreason": "@{items('Update_Signers_Status')?['declineReason']}"
+                                                        },
+                                                        "authentication": "@parameters('$authentication')"
+                                                    },
+                                                    "runAfter": {}
+                                                }
+                                            }
+                                        },
+                                        "Case_Signed": {
+                                            "case": "Signed",
+                                            "actions": {
+                                                "Update_Signer_Signed": {
+                                                    "type": "OpenApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connectionName": "shared_commondataserviceforapps",
+                                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                            "operationId": "UpdateOnlyRecord"
+                                                        },
+                                                        "parameters": {
+                                                            "entityName": "cs_signers",
+                                                            "recordId": "@{first(outputs('Get_Signer_Record')?['body/value'])?['cs_signerid']}",
+                                                            "item/statecode": 1,
+                                                            "item/statuscode": 3,
+                                                            "item/cs_signeddate": "@{items('Update_Signers_Status')?['signedDate']}",
+                                                            "item/cs_vieweddate": "@{items('Update_Signers_Status')?['viewedDate']}",
+                                                            "item/cs_declinedreason": "@{items('Update_Signers_Status')?['declineReason']}"
+                                                        },
+                                                        "authentication": "@parameters('$authentication')"
+                                                    },
+                                                    "runAfter": {}
+                                                }
+                                            }
+                                        },
+                                        "Case_Declined": {
+                                            "case": "Declined",
+                                            "actions": {
+                                                "Update_Signer_Declined": {
+                                                    "type": "OpenApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connectionName": "shared_commondataserviceforapps",
+                                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                            "operationId": "UpdateOnlyRecord"
+                                                        },
+                                                        "parameters": {
+                                                            "entityName": "cs_signers",
+                                                            "recordId": "@{first(outputs('Get_Signer_Record')?['body/value'])?['cs_signerid']}",
+                                                            "item/statecode": 1,
+                                                            "item/statuscode": 4,
+                                                            "item/cs_signeddate": "@{items('Update_Signers_Status')?['signedDate']}",
+                                                            "item/cs_vieweddate": "@{items('Update_Signers_Status')?['viewedDate']}",
+                                                            "item/cs_declinedreason": "@{items('Update_Signers_Status')?['declineReason']}"
+                                                        },
+                                                        "authentication": "@parameters('$authentication')"
+                                                    },
+                                                    "runAfter": {}
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "default": {
+                                        "actions": {
+                                            "Update_Signer_Default": {
+                                                "type": "OpenApiConnection",
+                                                "inputs": {
+                                                    "host": {
+                                                        "connectionName": "shared_commondataserviceforapps",
+                                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                        "operationId": "UpdateOnlyRecord"
+                                                    },
+                                                    "parameters": {
+                                                        "entityName": "cs_signers",
+                                                        "recordId": "@{first(outputs('Get_Signer_Record')?['body/value'])?['cs_signerid']}",
+                                                        "item/statecode": 0,
+                                                        "item/statuscode": 1,
+                                                        "item/cs_signeddate": "@{items('Update_Signers_Status')?['signedDate']}",
+                                                        "item/cs_vieweddate": "@{items('Update_Signers_Status')?['viewedDate']}",
+                                                        "item/cs_declinedreason": "@{items('Update_Signers_Status')?['declineReason']}"
+                                                    },
+                                                    "authentication": "@parameters('$authentication')"
+                                                },
+                                                "runAfter": {}
+                                            }
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "Get_Signer_Record": [
+                                            "Succeeded"
+                                        ]
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Switch_Envelope_Status": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Switch_Envelope_Status": {
+                            "type": "Switch",
+                            "expression": "@body('HTTP_Get_Envelope_Status')?['result']?['status']",
+                            "cases": {
+                                "Case_Completed": {
+                                    "case": "Completed",
+                                    "actions": {
+                                        "Update_Envelope_Completed": {
+                                            "type": "OpenApiConnection",
+                                            "inputs": {
+                                                "host": {
+                                                    "connectionName": "shared_commondataserviceforapps",
+                                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                    "operationId": "UpdateOnlyRecord"
+                                                },
+                                                "parameters": {
+                                                    "entityName": "cs_envelopes",
+                                                    "recordId": "@{items('Process_Each_Envelope')?['cs_envelopeid']}",
+                                                    "item/statecode": 1,
+                                                    "item/statuscode": 5,
+                                                    "item/cs_completeddate": "@{body('HTTP_Get_Envelope_Status')?['result']?['completedDate']}"
+                                                },
+                                                "authentication": "@parameters('$authentication')"
+                                            },
+                                            "runAfter": {}
+                                        }
+                                    }
+                                },
+                                "Case_Cancelled": {
+                                    "case": "Cancelled",
+                                    "actions": {
+                                        "Update_Envelope_Cancelled": {
+                                            "type": "OpenApiConnection",
+                                            "inputs": {
+                                                "host": {
+                                                    "connectionName": "shared_commondataserviceforapps",
+                                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                    "operationId": "UpdateOnlyRecord"
+                                                },
+                                                "parameters": {
+                                                    "entityName": "cs_envelopes",
+                                                    "recordId": "@{items('Process_Each_Envelope')?['cs_envelopeid']}",
+                                                    "item/statecode": 1,
+                                                    "item/statuscode": 8
+                                                },
+                                                "authentication": "@parameters('$authentication')"
+                                            },
+                                            "runAfter": {}
+                                        }
+                                    }
+                                },
+                                "Case_Declined": {
+                                    "case": "Declined",
+                                    "actions": {
+                                        "Update_Envelope_Declined": {
+                                            "type": "OpenApiConnection",
+                                            "inputs": {
+                                                "host": {
+                                                    "connectionName": "shared_commondataserviceforapps",
+                                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                    "operationId": "UpdateOnlyRecord"
+                                                },
+                                                "parameters": {
+                                                    "entityName": "cs_envelopes",
+                                                    "recordId": "@{items('Process_Each_Envelope')?['cs_envelopeid']}",
+                                                    "item/statecode": 1,
+                                                    "item/statuscode": 10
+                                                },
+                                                "authentication": "@parameters('$authentication')"
+                                            },
+                                            "runAfter": {}
+                                        }
+                                    }
+                                },
+                                "Case_Expired": {
+                                    "case": "Expired",
+                                    "actions": {
+                                        "Update_Envelope_Expired": {
+                                            "type": "OpenApiConnection",
+                                            "inputs": {
+                                                "host": {
+                                                    "connectionName": "shared_commondataserviceforapps",
+                                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                    "operationId": "UpdateOnlyRecord"
+                                                },
+                                                "parameters": {
+                                                    "entityName": "cs_envelopes",
+                                                    "recordId": "@{items('Process_Each_Envelope')?['cs_envelopeid']}",
+                                                    "item/statecode": 1,
+                                                    "item/statuscode": 11,
+                                                    "item/cs_expirationdate": "@{body('HTTP_Get_Envelope_Status')?['result']?['expirationDate']}"
+                                                },
+                                                "authentication": "@parameters('$authentication')"
+                                            },
+                                            "runAfter": {}
+                                        }
+                                    }
+                                },
+                                "Case_Error": {
+                                    "case": "Error",
+                                    "actions": {
+                                        "Update_Envelope_Error": {
+                                            "type": "OpenApiConnection",
+                                            "inputs": {
+                                                "host": {
+                                                    "connectionName": "shared_commondataserviceforapps",
+                                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                    "operationId": "UpdateOnlyRecord"
+                                                },
+                                                "parameters": {
+                                                    "entityName": "cs_envelopes",
+                                                    "recordId": "@{items('Process_Each_Envelope')?['cs_envelopeid']}",
+                                                    "item/statecode": 0,
+                                                    "item/statuscode": 6
+                                                },
+                                                "authentication": "@parameters('$authentication')"
+                                            },
+                                            "runAfter": {}
+                                        }
+                                    }
+                                }
+                            },
+                            "default": {
+                                "actions": {
+                                    "Update_Envelope_InProcess": {
+                                        "type": "OpenApiConnection",
+                                        "inputs": {
+                                            "host": {
+                                                "connectionName": "shared_commondataserviceforapps",
+                                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                "operationId": "UpdateOnlyRecord"
+                                            },
+                                            "parameters": {
+                                                "entityName": "cs_envelopes",
+                                                "recordId": "@{items('Process_Each_Envelope')?['cs_envelopeid']}",
+                                                "item/statecode": 0,
+                                                "item/statuscode": 4
+                                            },
+                                            "authentication": "@parameters('$authentication')"
+                                        },
+                                        "runAfter": {}
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "HTTP_Get_Signers_Status": [
+                                    "Succeeded"
+                                ]
+                            }
+                        }
+                    },
+                    "runAfter": {
+                        "Get_InProcess_Envelopes": [
+                            "Succeeded"
+                        ]
+                    }
+                }
+            }
+        },
+        "schemaVersion": "1.0.0.0",
+        "connectionReferences": {
+            "shared_commondataserviceforapps": {
+                "runtimeSource": "invoker",
+                "connection": {
+                    "connectionReferenceLogicalName": "cs_sharecommondataserviceforapps"
+                },
+                "api": {
+                    "name": "shared_commondataserviceforapps"
+                }
+            }
+        }
+    }
+}

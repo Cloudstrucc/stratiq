@@ -1,0 +1,121 @@
+{
+    "name": "ESign - Send Signer Reminder",
+    "properties": {
+        "definition": {
+            "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+                "$authentication": {
+                    "defaultValue": {},
+                    "type": "SecureObject"
+                },
+                "$connections": {
+                    "defaultValue": {},
+                    "type": "Object"
+                }
+            },
+            "triggers": {
+                "Recurrence": {
+                    "type": "Recurrence",
+                    "recurrence": {
+                        "interval": 1,
+                        "frequency": "Day"
+                    }
+                }
+            },
+            "actions": {
+                "Authenticate": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "POST",
+                        "uri": "https://account.assuresign.net/api/v3.7/authentication/apiUser",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "accept": "application/json"
+                        },
+                        "body": {
+                            "username": "elections-broker-service_apdFUAke",
+                            "apiKey": "d55q5AeThjLeO4SR1mfVSz30t3WF4jzg"
+                        }
+                    },
+                    "runAfter": {}
+                },
+                "Initialize_AssureSignToken": {
+                    "type": "InitializeVariable",
+                    "inputs": {
+                        "variables": [
+                            {
+                                "name": "AssureSignToken",
+                                "type": "string",
+                                "value": "@{concat('bearer ', body('Authenticate')?['result']?['token'])}"
+                            }
+                        ]
+                    },
+                    "runAfter": {
+                        "Authenticate": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Get_Pending_Signers": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                        "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "operationId": "GetItems"
+                        },
+                        "parameters": {
+                            "entityName": "cs_signers",
+                            "$filter": "statuscode eq 1"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Process_Each_Signer": {
+                    "type": "Foreach",
+                    "foreach": "@outputs('Get_Pending_Signers')?['body/value']",
+                    "actions": {
+                        "HTTP_Send_Reminder": {
+                            "type": "Http",
+                            "inputs": {
+                                "method": "POST",
+                                "uri": "@{concat('https://ca1.assuresign.net/api/documentnow/v3.7/envelopes/', items('Process_Each_Signer')?['cs_envelopeid'], '/signers/', items('Process_Each_Signer')?['cs_envelopesignerid'], '/reminders')}",
+                                "headers": {
+                                    "Authorization": "@{variables('AssureSignToken')}",
+                                    "X-AS-UserContext": "fred.pearson@leonardocompany.ca:b47945a4-e2ca-4304-8a84-96918989e464",
+                                    "accept": "application/json",
+                                    "Content-Type": "application/json"
+                                },
+                                "body": {}
+                            },
+                            "runAfter": {}
+                        }
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                }
+            }
+        },
+        "schemaVersion": "1.0.0.0",
+        "connectionReferences": {
+            "shared_commondataserviceforapps": {
+                "runtimeSource": "invoker",
+                "connection": {
+                    "connectionReferenceLogicalName": "cs_sharecommondataserviceforapps"
+                },
+                "api": {
+                    "name": "shared_commondataserviceforapps"
+                }
+            }
+        }
+    }
+}

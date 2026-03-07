@@ -1,0 +1,186 @@
+{
+    "name": "ESign - Sync Templates",
+    "properties": {
+        "definition": {
+            "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+                "$authentication": {
+                    "defaultValue": {},
+                    "type": "SecureObject"
+                },
+                "$connections": {
+                    "defaultValue": {},
+                    "type": "Object"
+                }
+            },
+            "triggers": {
+                "Recurrence": {
+                    "type": "Recurrence",
+                    "recurrence": {
+                        "interval": 1,
+                        "frequency": "Day"
+                    }
+                }
+            },
+            "actions": {
+                "Authenticate": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "POST",
+                        "uri": "https://account.assuresign.net/api/v3.7/authentication/apiUser",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "accept": "application/json"
+                        },
+                        "body": {
+                            "username": "elections-broker-service_apdFUAke",
+                            "apiKey": "d55q5AeThjLeO4SR1mfVSz30t3WF4jzg"
+                        }
+                    },
+                    "runAfter": {}
+                },
+                "Initialize_AssureSignToken": {
+                    "type": "InitializeVariable",
+                    "inputs": {
+                        "variables": [
+                            {
+                                "name": "AssureSignToken",
+                                "type": "string",
+                                "value": "@{concat('bearer ', body('Authenticate')?['result']?['token'])}"
+                            }
+                        ]
+                    },
+                    "runAfter": {
+                        "Authenticate": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "HTTP_Get_Templates": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "GET",
+                        "uri": "https://ca1.assuresign.net/api/documentnow/v3.7/templates",
+                        "headers": {
+                            "Authorization": "@{variables('AssureSignToken')}",
+                            "X-AS-UserContext": "fred.pearson@leonardocompany.ca:b47945a4-e2ca-4304-8a84-96918989e464",
+                            "accept": "application/json"
+                        }
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Process_Each_Template": {
+                    "type": "Foreach",
+                    "foreach": "@body('HTTP_Get_Templates')?['result']?['templates']",
+                    "actions": {
+                        "Get_Existing_Template": {
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                    "operationId": "GetItems"
+                                },
+                                "parameters": {
+                                    "entityName": "cs_templates",
+                                    "$filter": "@{concat('cs_templateid eq ', items('Process_Each_Template')?['templateID'])}"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                            },
+                            "runAfter": {}
+                        },
+                        "Check_Template_Exists": {
+                            "type": "If",
+                            "expression": {
+                                "and": [
+                                    {
+                                        "greater": [
+                                            "@length(outputs('Get_Existing_Template')?['body/value'])",
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            "actions": {
+                                "Update_Template": {
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connectionName": "shared_commondataserviceforapps",
+                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                            "operationId": "UpdateOnlyRecord"
+                                        },
+                                        "parameters": {
+                                            "entityName": "cs_templates",
+                                            "recordId": "@{first(outputs('Get_Existing_Template')?['body/value'])?['cs_templateid']}",
+                                            "item/statecode": 0,
+                                            "item/statuscode": 1,
+                                            "item/cs_name": "@{items('Process_Each_Template')?['name']}",
+                                            "item/cs_templateid": "@{items('Process_Each_Template')?['templateID']}",
+                                            "item/cs_description": "@{items('Process_Each_Template')?['description']}",
+                                            "item/cs_isactive": "@{items('Process_Each_Template')?['isActive']}",
+                                            "item/cs_modifieddate": "@{utcNow()}"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                    },
+                                    "runAfter": {}
+                                }
+                            },
+                            "else": {
+                                "actions": {
+                                    "Create_Template": {
+                                        "type": "OpenApiConnection",
+                                        "inputs": {
+                                            "host": {
+                                                "connectionName": "shared_commondataserviceforapps",
+                                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                                "operationId": "CreateItem"
+                                            },
+                                            "parameters": {
+                                                "entityName": "cs_templates",
+                                                "item/cs_name": "@{items('Process_Each_Template')?['name']}",
+                                                "item/cs_templateid": "@{items('Process_Each_Template')?['templateID']}",
+                                                "item/cs_description": "@{items('Process_Each_Template')?['description']}",
+                                                "item/cs_isactive": "@{items('Process_Each_Template')?['isActive']}",
+                                                "item/cs_createddate": "@{utcNow()}"
+                                            },
+                                            "authentication": "@parameters('$authentication')"
+                                        },
+                                        "runAfter": {}
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Get_Existing_Template": [
+                                    "Succeeded"
+                                ]
+                            }
+                        }
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                }
+            }
+        },
+        "schemaVersion": "1.0.0.0",
+        "connectionReferences": {
+            "shared_commondataserviceforapps": {
+                "runtimeSource": "invoker",
+                "connection": {
+                    "connectionReferenceLogicalName": "cs_sharecommondataserviceforapps"
+                },
+                "api": {
+                    "name": "shared_commondataserviceforapps"
+                }
+            }
+        }
+    }
+}

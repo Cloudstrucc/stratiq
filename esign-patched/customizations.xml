@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <connectionreferences>
+    <connectionreference connectionreferencelogicalname="cs_sharecommondataserviceforapps">
+      <connectionreferencedisplayname>Dataverse (Current Environment)</connectionreferencedisplayname>
+      <connectorid>/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps</connectorid>
+      <iscustomizable>1</iscustomizable>
+      <statecode>0</statecode>
+      <statuscode>1</statuscode>
+    </connectionreference>
+  </connectionreferences>
+  <Workflows>
+    <Workflow WorkflowId="{C7CDBE9C-A9E8-4F91-A719-6B2A5E1E5E65}" Name="ESign - Send Envelope" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignSendEnvelope-C7CDBE9C-A9E8-4F91-A719-6B2A5E1E5E65.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{91E66AE6-0394-47F6-85B4-13198774440C}" Name="ESign - Status Sync" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignStatusSync-91E66AE6-0394-47F6-85B4-13198774440C.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{C935DF27-58AB-4AE1-A583-4B3695A49F2D}" Name="ESign - Get Signing Links" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignGetSigningLinks-C935DF27-58AB-4AE1-A583-4B3695A49F2D.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{137DDC35-7351-45AB-91AA-FD67D30C4B22}" Name="ESign - Cancel Envelope" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignCancelEnvelope-137DDC35-7351-45AB-91AA-FD67D30C4B22.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{8182C764-ECD9-4913-BBE1-99C9D66232A1}" Name="ESign - Get Document Content" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignGetDocumentContent-8182C764-ECD9-4913-BBE1-99C9D66232A1.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{BE1A1128-B593-4FC7-AA22-DE6394E9BBEF}" Name="ESign - Send Signer Reminder" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignSendSignerReminder-BE1A1128-B593-4FC7-AA22-DE6394E9BBEF.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{1E781AFC-F714-4C6F-8672-654F73D705B6}" Name="ESign - Get Envelope History" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignGetEnvelopeHistory-1E781AFC-F714-4C6F-8672-654F73D705B6.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{7E4177F7-6F26-4F98-9C97-6D51F4F36792}" Name="ESign - Sync Templates" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignSyncTemplates-7E4177F7-6F26-4F98-9C97-6D51F4F36792.json</XamlFileName>
+    </Workflow>
+    <Workflow WorkflowId="{7467B6AB-123F-4ABE-B6FA-857F44C5C2F7}" Name="ESign - Get Access Links" Type="1" Subprocess="0" Category="5" Mode="0" Scope="4" OnDemand="0" TriggerOnCreate="0" TriggerOnDelete="0" AsyncAutoDelete="0" SyncWorkflowLogOnFailure="0" LanguageCode="1033" IsCustomizable="1" IsTransacted="0" IntroducedVersion="1.0.0.0" IsCustomProcessingStepAllowedForOtherPublishers="1">
+      <XamlFileName>/Workflows/ESignGetAccessLinks-7467B6AB-123F-4ABE-B6FA-857F44C5C2F7.json</XamlFileName>
+    </Workflow>
+  </Workflows>
+</ImportExportXml>

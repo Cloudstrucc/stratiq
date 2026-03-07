@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml version="9.2.26023.151" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <SolutionManifest>
+    <UniqueName>ESignatureBroker</UniqueName>
+    <LocalizedNames><LocalizedName description="E-Signature Broker" languagecode="1033"/></LocalizedNames>
+    <Descriptions><Description description="E-Signature Broker Service for Elections Canada" languagecode="1033"/></Descriptions>
+    <Version>1.0.0.29</Version>
+    <Managed>0</Managed>
+    <Publisher>
+      <UniqueName>cs</UniqueName>
+      <LocalizedNames><LocalizedName description="CloudStrucc" languagecode="1033"/></LocalizedNames>
+      <Descriptions/>
+      <EMailAddress/>
+      <SupportingWebsiteUrl/>
+      <CustomizationPrefix>cs</CustomizationPrefix>
+      <CustomizationOptionValuePrefix>71764</CustomizationOptionValuePrefix>
+      <Addresses/>
+    </Publisher>
+    <RootComponents>
+      <RootComponent type="10072" schemaName="cs_sharecommondataserviceforapps" behavior="0"/>
+      <RootComponent type="29" id="{c7cdbe9c-a9e8-4f91-a719-6b2a5e1e5e65}" behavior="0"/>
+      <RootComponent type="29" id="{91e66ae6-0394-47f6-85b4-13198774440c}" behavior="0"/>
+      <RootComponent type="29" id="{c935df27-58ab-4ae1-a583-4b3695a49f2d}" behavior="0"/>
+      <RootComponent type="29" id="{137ddc35-7351-45ab-91aa-fd67d30c4b22}" behavior="0"/>
+      <RootComponent type="29" id="{8182c764-ecd9-4913-bbe1-99c9d66232a1}" behavior="0"/>
+      <RootComponent type="29" id="{be1a1128-b593-4fc7-aa22-de6394e9bbef}" behavior="0"/>
+      <RootComponent type="29" id="{1e781afc-f714-4c6f-8672-654f73d705b6}" behavior="0"/>
+      <RootComponent type="29" id="{7e4177f7-6f26-4f98-9c97-6d51f4f36792}" behavior="0"/>
+      <RootComponent type="29" id="{7467b6ab-123f-4abe-b6fa-857f44c5c2f7}" behavior="0"/>
+    </RootComponents>
+    <MissingDependencies/>
+  </SolutionManifest>
+</ImportExportXml>

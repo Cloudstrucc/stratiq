@@ -1,0 +1,152 @@
+{
+    "name": "ESign - Get Envelope History",
+    "properties": {
+        "definition": {
+            "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+                "$authentication": {
+                    "defaultValue": {},
+                    "type": "SecureObject"
+                },
+                "$connections": {
+                    "defaultValue": {},
+                    "type": "Object"
+                }
+            },
+            "triggers": {
+                "Recurrence": {
+                    "type": "Recurrence",
+                    "recurrence": {
+                        "interval": 1,
+                        "frequency": "Day"
+                    }
+                }
+            },
+            "actions": {
+                "Authenticate": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "POST",
+                        "uri": "https://account.assuresign.net/api/v3.7/authentication/apiUser",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "accept": "application/json"
+                        },
+                        "body": {
+                            "username": "elections-broker-service_apdFUAke",
+                            "apiKey": "d55q5AeThjLeO4SR1mfVSz30t3WF4jzg"
+                        }
+                    },
+                    "runAfter": {}
+                },
+                "Initialize_AssureSignToken": {
+                    "type": "InitializeVariable",
+                    "inputs": {
+                        "variables": [
+                            {
+                                "name": "AssureSignToken",
+                                "type": "string",
+                                "value": "@{concat('bearer ', body('Authenticate')?['result']?['token'])}"
+                            }
+                        ]
+                    },
+                    "runAfter": {
+                        "Authenticate": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Get_Closed_Envelopes": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                        "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "operationId": "GetItems"
+                        },
+                        "parameters": {
+                            "entityName": "cs_envelopes",
+                            "$filter": "statuscode eq 5 or statuscode eq 8 or statuscode eq 10"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Process_Each_Envelope": {
+                    "type": "Foreach",
+                    "foreach": "@outputs('Get_Closed_Envelopes')?['body/value']",
+                    "actions": {
+                        "HTTP_Get_Envelope_History": {
+                            "type": "Http",
+                            "inputs": {
+                                "method": "GET",
+                                "uri": "@{concat('https://ca1.assuresign.net/api/documentnow/v3.7/envelopes/', items('Process_Each_Envelope')?['cs_envelopeid'], '/history')}",
+                                "headers": {
+                                    "Authorization": "@{variables('AssureSignToken')}",
+                                    "X-AS-UserContext": "fred.pearson@leonardocompany.ca:b47945a4-e2ca-4304-8a84-96918989e464",
+                                    "accept": "application/json"
+                                }
+                            },
+                            "runAfter": {}
+                        },
+                        "Process_History_Items": {
+                            "type": "Foreach",
+                            "foreach": "@body('HTTP_Get_Envelope_History')?['result']?['history']",
+                            "actions": {
+                                "Create_History_Record": {
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connectionName": "shared_commondataserviceforapps",
+                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                            "operationId": "CreateItem"
+                                        },
+                                        "parameters": {
+                                            "entityName": "cs_envelopehistorys",
+                                            "item/cs_name": "@{items('Process_History_Items')?['eventType']}",
+                                            "item/cs_envelopeid": "@{items('Process_Each_Envelope')?['cs_envelopeid']}",
+                                            "item/cs_eventtype": "@{items('Process_History_Items')?['eventType']}",
+                                            "item/cs_eventdate": "@{items('Process_History_Items')?['eventDate']}",
+                                            "item/cs_username": "@{items('Process_History_Items')?['userName']}",
+                                            "item/cs_ipaddress": "@{items('Process_History_Items')?['ipAddress']}",
+                                            "item/cs_description": "@{items('Process_History_Items')?['description']}"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                    },
+                                    "runAfter": {}
+                                }
+                            },
+                            "runAfter": {
+                                "HTTP_Get_Envelope_History": [
+                                    "Succeeded"
+                                ]
+                            }
+                        }
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                }
+            }
+        },
+        "schemaVersion": "1.0.0.0",
+        "connectionReferences": {
+            "shared_commondataserviceforapps": {
+                "runtimeSource": "invoker",
+                "connection": {
+                    "connectionReferenceLogicalName": "cs_sharecommondataserviceforapps"
+                },
+                "api": {
+                    "name": "shared_commondataserviceforapps"
+                }
+            }
+        }
+    }
+}

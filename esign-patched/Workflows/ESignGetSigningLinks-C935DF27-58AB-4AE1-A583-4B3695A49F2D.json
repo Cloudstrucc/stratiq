@@ -1,0 +1,192 @@
+{
+    "name": "ESign - Get Signing Links",
+    "properties": {
+        "definition": {
+            "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+                "$authentication": {
+                    "defaultValue": {},
+                    "type": "SecureObject"
+                },
+                "$connections": {
+                    "defaultValue": {},
+                    "type": "Object"
+                }
+            },
+            "triggers": {
+                "When_a_row_is_added_modified_or_deleted": {
+                    "type": "OpenApiConnectionWebhook",
+                    "inputs": {
+                        "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "operationId": "SubscribeWebhookTrigger"
+                        },
+                        "parameters": {
+                            "subscriptionRequest/message": 3,
+                            "subscriptionRequest/entityname": "cs_envelopes",
+                            "subscriptionRequest/scope": 4,
+                            "subscriptionRequest/filteringattributes": "statuscode"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                    }
+                }
+            },
+            "actions": {
+                "Authenticate": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "POST",
+                        "uri": "https://account.assuresign.net/api/v3.7/authentication/apiUser",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "accept": "application/json"
+                        },
+                        "body": {
+                            "username": "elections-broker-service_apdFUAke",
+                            "apiKey": "d55q5AeThjLeO4SR1mfVSz30t3WF4jzg"
+                        }
+                    },
+                    "runAfter": {}
+                },
+                "Initialize_AssureSignToken": {
+                    "type": "InitializeVariable",
+                    "inputs": {
+                        "variables": [
+                            {
+                                "name": "AssureSignToken",
+                                "type": "string",
+                                "value": "@{concat('bearer ', body('Authenticate')?['result']?['token'])}"
+                            }
+                        ]
+                    },
+                    "runAfter": {
+                        "Authenticate": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Get_Envelope_Record": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                        "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "operationId": "GetItem"
+                        },
+                        "parameters": {
+                            "entityName": "cs_envelopes",
+                            "recordId": "@{triggerOutputs()?['body/cs_envelopeid']}"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {
+                        "Initialize_AssureSignToken": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "HTTP_Get_Signing_Links": {
+                    "type": "Http",
+                    "inputs": {
+                        "method": "GET",
+                        "uri": "@{concat('https://ca1.assuresign.net/api/documentnow/v3.7/envelopes/', outputs('Get_Envelope_Record')?['body/cs_envelopeid'], '/signingLinks')}",
+                        "headers": {
+                            "Authorization": "@{variables('AssureSignToken')}",
+                            "X-AS-UserContext": "fred.pearson@leonardocompany.ca:b47945a4-e2ca-4304-8a84-96918989e464",
+                            "accept": "application/json"
+                        }
+                    },
+                    "runAfter": {
+                        "Get_Envelope_Record": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Get_Signers": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                        "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "operationId": "GetItems"
+                        },
+                        "parameters": {
+                            "entityName": "cs_signers",
+                            "$filter": "@{concat('cs_envelopeid eq ', triggerOutputs()?['body/cs_envelopeid'])}"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {
+                        "HTTP_Get_Signing_Links": [
+                            "Succeeded"
+                        ]
+                    }
+                },
+                "Update_Signer_Links": {
+                    "type": "Foreach",
+                    "foreach": "@body('HTTP_Get_Signing_Links')?['result']?['signingLinks']",
+                    "actions": {
+                        "Get_Signer_Record": {
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                    "operationId": "GetItems"
+                                },
+                                "parameters": {
+                                    "entityName": "cs_signers",
+                                    "$filter": "@{concat('cs_envelopesignerid eq ', items('Update_Signer_Links')?['signerID'])}"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                            },
+                            "runAfter": {}
+                        },
+                        "Update_Signer_Link": {
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                    "operationId": "UpdateOnlyRecord"
+                                },
+                                "parameters": {
+                                    "entityName": "cs_signers",
+                                    "recordId": "@{first(outputs('Get_Signer_Record')?['body/value'])?['cs_signerid']}",
+                                    "item/statecode": 0,
+                                    "item/statuscode": 1,
+                                    "item/cs_signinglink": "@{items('Update_Signer_Links')?['signingLink']}"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                            },
+                            "runAfter": {
+                                "Get_Signer_Record": [
+                                    "Succeeded"
+                                ]
+                            }
+                        }
+                    },
+                    "runAfter": {
+                        "Get_Signers": [
+                            "Succeeded"
+                        ]
+                    }
+                }
+            }
+        },
+        "schemaVersion": "1.0.0.0",
+        "connectionReferences": {
+            "shared_commondataserviceforapps": {
+                "runtimeSource": "invoker",
+                "connection": {
+                    "connectionReferenceLogicalName": "cs_sharecommondataserviceforapps"
+                },
+                "api": {
+                    "name": "shared_commondataserviceforapps"
+                }
+            }
+        }
+    }
+}
