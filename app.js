@@ -7,12 +7,23 @@
 
 require('dotenv').config();
 
+const path       = require('path');
+const fs         = require('fs');
+
+// ── Ensure DB directory exists BEFORE anything tries to open SQLite ───────────
+// On Azure App Service only /home is persisted across restarts.
+// DB_DIR defaults to /home/db in production, ./db in development.
+const DB_DIR = process.env.DB_DIR || path.join(__dirname, 'db');
+if (!fs.existsSync(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true });
+  console.log(`📁 Created DB directory: ${DB_DIR}`);
+}
+
 const express    = require('express');
 const session    = require('express-session');
 const flash      = require('connect-flash');
 const passport   = require('./config/passport');
 const hbs        = require('express-handlebars');
-const path       = require('path');
 const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
 const SQLiteStore = require('connect-sqlite3')(session);
@@ -25,6 +36,7 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // Trust first proxy (Azure App Service reverse proxy)
+// Required for express-rate-limit to receive a clean IP address
 app.set('trust proxy', 1);
 
 // ── Security headers ─────────────────────────────────────────
@@ -128,9 +140,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Session
+// Session — store in DB_DIR so it survives restarts on Azure
 app.use(session({
-  store:  new SQLiteStore({ db: 'sessions.db', dir: './db' }),
+  store:  new SQLiteStore({ db: 'sessions.db', dir: DB_DIR }),
   secret: process.env.SESSION_SECRET || 'stratiq-dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
@@ -169,7 +181,6 @@ app.get('/pricing', (req, res) => {
 
 // ── Strategy data for AI strategy page ───────────────────────
 app.use((req, res, next) => {
-  // Expose strategy list to all views
   res.locals.strategies = Object.entries(STRATEGIES).map(([key, val]) => ({
     key,
     name: val.name,

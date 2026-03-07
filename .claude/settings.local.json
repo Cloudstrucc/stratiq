@@ -23,7 +23,8 @@
       "Bash(mkdir:*)",
       "Bash(mkdir -p /tmp/esign-solution)",
       "Read(//private/tmp/esign-solution/**)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cp:*)"
     ]
   }
 }

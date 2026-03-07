@@ -100,13 +100,15 @@
       </div>
     </div>
 
+    <!-- Scripts loaded BEFORE body so Chart.js is available to inline scripts in views -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="/js/theme.js"></script>
+    <script src="/js/dashboard.js"></script>
+
     {{{body}}}
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="/js/theme.js"></script>
-  <script src="/js/dashboard.js"></script>
   <script>
     setTimeout(() => {
       document.querySelectorAll('.flash-toast').forEach(el => {

@@ -36,7 +36,8 @@ APP_SERVICE_PLAN="${APP_SERVICE_PLAN:-stratiq-plan}"
 SKU="${SKU:-B1}"                                         # F1=free(limited), B1=$13/mo, B2, S1, P1v3
 NODE_VERSION="${NODE_VERSION:-}"                         # auto-detected; or set e.g. NODE:20-lts
 SESSION_SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
-DB_PATH="${DB_PATH:-/home/data/stratiq.db}"              # persistent /home volume in App Service
+DB_DIR="${DB_DIR:-/home/db}"                             # persistent /home volume — only dir that survives restarts
+DB_PATH="${DB_PATH:-/home/db/stratiq.db}"                # full path = DB_DIR + filename
 
 # -- Banner ---------------------------------------------------
 echo ""
@@ -145,6 +146,7 @@ echo -e "  Resource Group    : ${BOLD}${RESOURCE_GROUP}${RESET}"
 echo -e "  Region            : ${BOLD}${REGION}${RESET}"
 echo -e "  App Service Plan  : ${BOLD}${APP_SERVICE_PLAN}${RESET} (SKU: ${SKU})"
 echo -e "  Runtime           : ${BOLD}${RUNTIME}${RESET}"
+echo -e "  DB Dir (remote)   : ${BOLD}${DB_DIR}${RESET}"
 echo -e "  DB Path (remote)  : ${BOLD}${DB_PATH}${RESET}"
 echo -e "  Subscription      : ${BOLD}${SUBSCRIPTION_NAME}${RESET}"
 echo ""
@@ -180,6 +182,15 @@ if [ ${#MISSING_KEYS[@]} -gt 0 ]; then
   [[ "$SKIP_CONFIRM" =~ ^[Yy]$ ]] || { warn "Aborted. Fill in .env and retry."; exit 0; }
 else
   success "Required keys present in .env"
+fi
+
+# Warn if the known-exposed Anthropic key is still in .env
+if [ -f ".env" ]; then
+  ANTHROPIC_VAL=$(grep -E "^ANTHROPIC_API_KEY=" .env | cut -d'=' -f2- | xargs 2>/dev/null || true)
+  if [[ "$ANTHROPIC_VAL" == "sk-ant-api03-essUzUx"* ]]; then
+    echo ""
+    error "ANTHROPIC_API_KEY in .env is a previously-exposed key. Rotate it at https://console.anthropic.com before deploying."
+  fi
 fi
 
 # -- Build deployment package ---------------------------------
@@ -289,6 +300,7 @@ az webapp config appsettings set \
     PORT="8080" \
     APP_URL="https://${APP_NAME}.azurewebsites.net" \
     SESSION_SECRET="$SESSION_SECRET" \
+    DB_DIR="$DB_DIR" \
     DB_PATH="$DB_PATH" \
     WEBSITE_NODE_DEFAULT_VERSION="~${NODE_MAJOR}" \
     SCM_DO_BUILD_DURING_DEPLOYMENT="true" \
@@ -303,7 +315,7 @@ if [ -f ".env" ]; then
   info "Syncing API keys from .env to App Settings..."
 
   EXTRA_SETTINGS=()
-  SKIP_KEYS="NODE_ENV|PORT|APP_URL|SESSION_SECRET|DB_PATH|WEBSITE_NODE_DEFAULT_VERSION|SCM_DO_BUILD_DURING_DEPLOYMENT|WEBSITE_RUN_FROM_PACKAGE"
+  SKIP_KEYS="NODE_ENV|PORT|APP_URL|SESSION_SECRET|DB_DIR|DB_PATH|WEBSITE_NODE_DEFAULT_VERSION|SCM_DO_BUILD_DURING_DEPLOYMENT|WEBSITE_RUN_FROM_PACKAGE"
 
   while IFS='=' read -r KEY VALUE; do
     [[ "$KEY" =~ ^#.*$   ]] && continue
